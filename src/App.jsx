@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, BrowserRouter } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import ParentApp from './pages/ParentApp'
 import ChildApp from './pages/ChildApp'
 import LoginPage from './pages/LoginPage'
+import RoleSetupPage from './pages/RoleSetupPage'
 
 // 認証状態に応じてルーティング
 function AppRoutes() {
-  const { user, loading } = useAuth()
+  const { user, loading, pendingProfile } = useAuth()
 
   if (loading) {
     return (
@@ -15,6 +15,11 @@ function AppRoutes() {
         <p style={{ fontSize: '1.2rem', color: '#666' }}>よみこみちゅう…</p>
       </div>
     )
+  }
+
+  // 新規ユーザーのロール設定が未完了
+  if (pendingProfile) {
+    return <RoleSetupPage />
   }
 
   if (!user) {

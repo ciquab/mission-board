@@ -153,6 +153,71 @@ export async function updateTaskApproval(taskId, status, pointValue) {
   await updateRow(SHEETS.TASKS, rowIndex + 2, updated)
 }
 
+/** タスクを全フィールド更新 */
+export async function updateTask(taskId, updates) {
+  const rows = await getRows(SHEETS.TASKS, 'A2:O')
+  const rowIndex = rows.findIndex(r => r[0] === taskId)
+  if (rowIndex === -1) throw new Error('タスクが見つかりません')
+
+  const current = rowToTask(rows[rowIndex])
+  const updated = { ...current, ...updates }
+  await updateRow(SHEETS.TASKS, rowIndex + 2, taskToRow(updated))
+  return updated
+}
+
+/** タスクをアーカイブ（論理削除） */
+export async function archiveTask(taskId) {
+  return updateTask(taskId, { status: 'archived' })
+}
+
+// ============================================================
+// ユーザー操作
+// ============================================================
+
+// usersシートの列順
+const USER_COLUMNS = [
+  'user_id', 'name', 'role', 'email', 'parent_id', 'push_endpoint', 'created_at'
+]
+
+function rowToUser(row) {
+  return Object.fromEntries(USER_COLUMNS.map((key, i) => [key, row[i] ?? '']))
+}
+
+function userToRow(user) {
+  return USER_COLUMNS.map(key => user[key] ?? '')
+}
+
+/** メールアドレスでユーザーを検索 */
+export async function getUserByEmail(email) {
+  const rows = await getRows(SHEETS.USERS, 'A2:G')
+  const row = rows.find(r => r[3] === email)
+  return row ? rowToUser(row) : null
+}
+
+/** 新規ユーザーを登録 */
+export async function registerUser(userData) {
+  await appendRow(SHEETS.USERS, userToRow(userData))
+  return userData
+}
+
+/** ユーザー情報を更新 */
+export async function updateUser(userId, updates) {
+  const rows = await getRows(SHEETS.USERS, 'A2:G')
+  const rowIndex = rows.findIndex(r => r[0] === userId)
+  if (rowIndex === -1) throw new Error('ユーザーが見つかりません')
+
+  const current = rowToUser(rows[rowIndex])
+  const updated = { ...current, ...updates }
+  await updateRow(SHEETS.USERS, rowIndex + 2, userToRow(updated))
+  return updated
+}
+
+/** 親IDに紐づく子どもを取得 */
+export async function getChildren(parentId) {
+  const rows = await getRows(SHEETS.USERS, 'A2:G')
+  return rows.filter(r => r[4] === parentId).map(rowToUser)
+}
+
 // ============================================================
 // 完了ログ操作
 // ============================================================
