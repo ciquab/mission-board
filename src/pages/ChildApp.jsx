@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import {
   getTasksForUser,
@@ -8,6 +8,7 @@ import {
 } from '../api/sheets'
 import MissionCard from '../components/child/MissionCard'
 import ProposalForm from '../components/child/ProposalForm'
+import { fireAllDoneConfetti } from '../utils/confetti'
 
 const TIME_BLOCKS = [
   { value: 'morning', label: '🌅 あさ' },
@@ -32,80 +33,121 @@ function getToday() {
   return new Date().toDateString()
 }
 
+// 1日の提案上限
+const PROPOSAL_LIMIT = 5
+
 const styles = {
   container: {
     maxWidth: '480px',
     margin: '0 auto',
     minHeight: '100vh',
-    background: '#F5F7FA',
-    paddingBottom: '5rem',
+    background: '#EEF2FF',
+    paddingBottom: '6.5rem',
   },
   header: {
-    background: 'linear-gradient(135deg, #2E75B6 0%, #1a4f8a 100%)',
+    background: 'linear-gradient(160deg, #1565C0 0%, #1976D2 60%, #42A5F5 100%)',
     color: '#fff',
-    padding: '1.25rem 1.25rem 1rem',
+    padding: '1.25rem 1.25rem 0',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    boxShadow: '0 2px 12px rgba(21,101,192,0.3)',
   },
   headerTop: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '0.75rem',
+    marginBottom: '0.85rem',
   },
   greeting: {
     fontSize: '1rem',
     opacity: 0.85,
-    marginBottom: '0.15rem',
+    marginBottom: '0.1rem',
   },
   userName: {
-    fontSize: '1.5rem',
+    fontSize: '1.7rem',
     fontWeight: 'bold',
+    letterSpacing: '-0.5px',
   },
   headerRight: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
-    gap: '0.35rem',
+    gap: '0.4rem',
   },
   pointDisplay: {
     background: '#FFB300',
     color: '#fff',
     borderRadius: '999px',
-    padding: '0.3rem 0.8rem',
-    fontSize: '0.85rem',
+    padding: '0.35rem 0.9rem',
+    fontSize: '1rem',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     gap: '0.25rem',
+    boxShadow: '0 2px 8px rgba(255,179,0,0.4)',
   },
   switchBtn: {
-    padding: '0.3rem 0.65rem',
+    padding: '0.25rem 0.6rem',
     background: 'rgba(255,255,255,0.15)',
     color: 'rgba(255,255,255,0.8)',
     border: '1px solid rgba(255,255,255,0.3)',
     borderRadius: '6px',
-    fontSize: '0.72rem',
+    fontSize: '0.7rem',
     cursor: 'pointer',
-    minHeight: 'auto',
+    minHeight: 'unset',
+    minWidth: 'unset',
   },
+  progressSection: {
+    marginBottom: '0.85rem',
+    padding: '0 0.15rem',
+  },
+  progressLabel: {
+    fontSize: '0.82rem',
+    opacity: 0.9,
+    marginBottom: '0.4rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressCount: {
+    fontWeight: 'bold',
+    fontSize: '0.88rem',
+  },
+  progressBg: {
+    height: '7px',
+    background: 'rgba(255,255,255,0.25)',
+    borderRadius: '999px',
+    overflow: 'hidden',
+  },
+  progressFill: (pct) => ({
+    height: '100%',
+    background: pct >= 100 ? '#FFD600' : '#fff',
+    borderRadius: '999px',
+    width: `${pct}%`,
+    transition: 'width 0.6s ease',
+    boxShadow: pct >= 100 ? '0 0 8px rgba(255,214,0,0.8)' : 'none',
+  }),
   timeBlockTabs: {
     display: 'flex',
-    gap: '0',
     overflowX: 'auto',
     scrollbarWidth: 'none',
-    padding: '0 0.25rem',
+    padding: '0 0.1rem',
+    gap: '0.1rem',
   },
   timeTab: (active) => ({
-    padding: '0.5rem 0.85rem',
+    padding: '0.6rem 0.95rem',
     background: 'none',
     border: 'none',
-    borderBottom: active ? '3px solid #fff' : '3px solid transparent',
-    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+    borderBottom: active ? '3px solid #FFD600' : '3px solid transparent',
+    color: active ? '#FFD600' : 'rgba(255,255,255,0.6)',
     fontWeight: active ? 'bold' : 'normal',
-    fontSize: '0.85rem',
+    fontSize: '0.9rem',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
-    minHeight: 'auto',
+    minHeight: 'unset',
     flexShrink: 0,
+    transition: 'color 0.2s',
   }),
   body: {
     padding: '1rem',
@@ -122,41 +164,68 @@ const styles = {
   missionList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.75rem',
+    gap: '0.85rem',
   },
   empty: {
     textAlign: 'center',
-    padding: '3rem 1rem',
+    padding: '3.5rem 1rem',
     color: '#aaa',
-    fontSize: '0.9rem',
-    lineHeight: 1.7,
+    fontSize: '1rem',
+    lineHeight: 1.9,
   },
   allDone: {
     textAlign: 'center',
     padding: '2.5rem 1rem',
-    color: '#4CAF50',
-    fontSize: '1rem',
-    fontWeight: 'bold',
     lineHeight: 1.7,
+  },
+  allDoneEmoji: {
+    fontSize: '4.5rem',
+    display: 'block',
+    marginBottom: '0.5rem',
+    animation: 'none',
+  },
+  allDoneTitle: {
+    fontSize: '1.6rem',
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginBottom: '0.4rem',
+  },
+  allDoneMsg: {
+    fontSize: '1rem',
+    color: '#555',
   },
   loading: {
     textAlign: 'center',
     padding: '3rem 1rem',
     color: '#aaa',
-    fontSize: '0.9rem',
+    fontSize: '1rem',
   },
   error: {
     background: '#FEEBEE',
     color: '#C62828',
     padding: '0.75rem 1rem',
-    borderRadius: '8px',
-    fontSize: '0.85rem',
+    borderRadius: '10px',
+    fontSize: '0.9rem',
     marginBottom: '1rem',
+    lineHeight: 1.5,
+  },
+  successToast: {
+    background: '#E8F5E9',
+    color: '#2E7D32',
+    border: '1.5px solid #A5D6A7',
+    borderRadius: '10px',
+    padding: '0.8rem 1rem',
+    fontSize: '0.95rem',
+    marginBottom: '1rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    lineHeight: 1.5,
   },
   proposalSection: {
     marginTop: '1.5rem',
     paddingTop: '1rem',
-    borderTop: '2px dashed #ddd',
+    borderTop: '2px dashed #C5CAE9',
   },
   pendingList: {
     display: 'flex',
@@ -166,43 +235,51 @@ const styles = {
   },
   pendingItem: {
     background: '#FFF8E1',
-    borderRadius: '8px',
-    padding: '0.6rem 0.75rem',
-    fontSize: '0.85rem',
+    border: '1px solid #FFE082',
+    borderRadius: '10px',
+    padding: '0.65rem 0.9rem',
+    fontSize: '0.9rem',
     color: '#555',
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+  },
+  signOutLink: {
+    textAlign: 'center',
+    marginTop: '2.5rem',
+    color: '#bbb',
+    fontSize: '0.8rem',
+    cursor: 'pointer',
+    textDecoration: 'underline',
   },
   proposeBtn: {
     position: 'fixed',
     bottom: '1.5rem',
     left: '50%',
     transform: 'translateX(-50%)',
-    padding: '0.9rem 2rem',
-    background: '#FFB300',
+    height: '56px',
+    padding: '0 2rem',
+    background: 'linear-gradient(135deg, #FFB300 0%, #FF8F00 100%)',
     color: '#fff',
     border: 'none',
     borderRadius: '999px',
     fontSize: '1rem',
     fontWeight: 'bold',
     cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(255,179,0,0.4)',
+    boxShadow: '0 4px 20px rgba(255,143,0,0.5)',
     whiteSpace: 'nowrap',
     zIndex: 100,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    transition: 'opacity 0.2s',
+    minHeight: 'unset',
   },
-  signOutLink: {
-    textAlign: 'center',
-    marginTop: '2rem',
-    color: '#aaa',
-    fontSize: '0.8rem',
-    cursor: 'pointer',
-    textDecoration: 'underline',
+  proposalCount: {
+    opacity: 0.8,
+    fontSize: '0.8em',
   },
 }
-
-// 1日の提案上限
-const PROPOSAL_LIMIT = 5
 
 export default function ChildApp() {
   const { user, signOut, switchRole } = useAuth()
@@ -214,9 +291,9 @@ export default function ChildApp() {
   const [completing, setCompleting] = useState(null)
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [submittingProposal, setSubmittingProposal] = useState(false)
+  const [proposalSuccess, setProposalSuccess] = useState(false)
 
-  // ローカルで完了済みを管理（Sheetsへの追記後にキャッシュ）
-  // マウント時の今日の日付でキーを決定する
+  // ローカルで完了済みを管理（当日のみ）
   const [completedIds, setCompletedIds] = useState(() => {
     const key = `completed_${getToday()}`
     try {
@@ -229,6 +306,23 @@ export default function ChildApp() {
     const key = `proposals_${getToday()}_${user.id}`
     return Number(localStorage.getItem(key) || 0)
   })
+
+  // 承認済みタスク全体
+  const allTasks = tasks.filter(t => t.approval_status !== 'pending')
+  // 今日の全体進捗
+  const completedTodayCount = allTasks.filter(t => completedIds.includes(t.task_id)).length
+  const progressPct = allTasks.length > 0
+    ? Math.min(100, Math.round(completedTodayCount / allTasks.length * 100))
+    : 0
+  // 現在の時間帯のミッション
+  const currentMissions = tasks.filter(t =>
+    t.time_block === activeTimeBlock && t.approval_status !== 'pending'
+  )
+  // 承認待ちの提案
+  const pendingProposals = tasks.filter(t => t.approval_status === 'pending')
+  // 全ミッション完了フラグ
+  const allDone = currentMissions.length > 0 &&
+    currentMissions.every(m => completedIds.includes(m.task_id))
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -249,20 +343,21 @@ export default function ChildApp() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // 現在の時間帯のタスク（承認済みのみ）
-  const currentMissions = tasks.filter(t =>
-    t.time_block === activeTimeBlock && t.approval_status !== 'pending'
-  )
-
-  // 承認待ちの提案
-  const pendingProposals = tasks.filter(t => t.approval_status === 'pending')
+  // 全ミッション完了時に連続紙吹雪（ローディング後の遷移のみ発火）
+  const prevAllDoneRef = useRef(null)
+  useEffect(() => {
+    if (loading) return
+    if (allDone && prevAllDoneRef.current === false) {
+      fireAllDoneConfetti()
+    }
+    prevAllDoneRef.current = allDone
+  }, [allDone, loading])
 
   async function handleComplete(taskId, pointValue) {
     setCompleting(taskId)
     setError('')
     try {
       await logTaskCompletion(taskId, user.id, Number(pointValue || 0))
-
       const newCompleted = [...completedIds, taskId]
       setCompletedIds(newCompleted)
       localStorage.setItem(`completed_${getToday()}`, JSON.stringify(newCompleted))
@@ -276,7 +371,7 @@ export default function ChildApp() {
 
   async function handlePropose(form) {
     if (todayProposals >= PROPOSAL_LIMIT) {
-      setError(`きょうのていあんはもう${PROPOSAL_LIMIT}こだよ。あしたまたてたね！`)
+      setError(`きょうのていあんはもう${PROPOSAL_LIMIT}こだよ。あしたまたしてね！`)
       return
     }
     setSubmittingProposal(true)
@@ -292,15 +387,15 @@ export default function ChildApp() {
         approval_status: 'pending',
         require_approval: 'true',
         due_date: '',
-        point_value: '0', // 親が承認時に設定
+        point_value: '0',
       })
-
       const key = `proposals_${getToday()}_${user.id}`
       const newCount = todayProposals + 1
       setTodayProposals(newCount)
       localStorage.setItem(key, String(newCount))
-
       setShowProposalForm(false)
+      setProposalSuccess(true)
+      setTimeout(() => setProposalSuccess(false), 3500)
       await loadData()
     } catch (e) {
       setError('ていあんのおくりに失敗しました。' + e.message)
@@ -309,9 +404,6 @@ export default function ChildApp() {
     }
   }
 
-  const allDone = currentMissions.length > 0 &&
-    currentMissions.every(m => completedIds.includes(m.task_id))
-
   return (
     <div style={styles.container}>
       {/* ヘッダー */}
@@ -319,7 +411,7 @@ export default function ChildApp() {
         <div style={styles.headerTop}>
           <div>
             <div style={styles.greeting}>やあ、</div>
-            <div style={styles.userName}>{user.name} ！</div>
+            <div style={styles.userName}>{user.name}！</div>
           </div>
           <div style={styles.headerRight}>
             <div style={styles.pointDisplay}>
@@ -332,6 +424,22 @@ export default function ChildApp() {
             )}
           </div>
         </div>
+
+        {/* 今日の全体進捗バー */}
+        {!loading && allTasks.length > 0 && (
+          <div style={styles.progressSection}>
+            <div style={styles.progressLabel}>
+              <span>きょうのミッション</span>
+              <span style={styles.progressCount}>
+                {completedTodayCount} / {allTasks.length} クリア
+                {progressPct >= 100 && ' 🎊'}
+              </span>
+            </div>
+            <div style={styles.progressBg}>
+              <div style={styles.progressFill(progressPct)} />
+            </div>
+          </div>
+        )}
 
         {/* 時間帯タブ */}
         <div style={styles.timeBlockTabs}>
@@ -349,25 +457,34 @@ export default function ChildApp() {
 
       {/* ボディ */}
       <div style={styles.body}>
+        {/* 提案送信成功トースト */}
+        {proposalSuccess && (
+          <div style={styles.successToast}>
+            💡 ていあんをおくったよ！おやがかくにんするまでまってね 🎉
+          </div>
+        )}
+
         {error && <div style={styles.error}>{error}</div>}
 
         {loading ? (
           <div style={styles.loading}>よみこみちゅう…</div>
         ) : allDone ? (
           <div style={styles.allDone}>
-            🎉 この時間のミッションをぜんぶクリア！<br />
-            すごい！やったね！
+            <span style={styles.allDoneEmoji}>🎉</span>
+            <div style={styles.allDoneTitle}>ぜんぶクリア！</div>
+            <div style={styles.allDoneMsg}>
+              この時間のミッションをぜんぶやったよ！<br />
+              すごい！よくがんばった！
+            </div>
           </div>
         ) : currentMissions.length === 0 ? (
           <div style={styles.empty}>
             この時間のミッションはないよ。<br />
-            ほかの時間を見てみよう！
+            ほかの時間をみてみよう！🔍
           </div>
         ) : (
           <>
-            <div style={styles.sectionTitle}>
-              🎯 ミッション
-            </div>
+            <div style={styles.sectionTitle}>🎯 ミッション</div>
             <div style={styles.missionList}>
               {currentMissions.map(task => (
                 <MissionCard
@@ -386,7 +503,7 @@ export default function ChildApp() {
         {pendingProposals.length > 0 && (
           <div style={styles.proposalSection}>
             <div style={styles.sectionTitle}>
-              💡 おやがかくにんちゅう
+              💡 おやがかくにんちゅう（{pendingProposals.length}件）
             </div>
             <div style={styles.pendingList}>
               {pendingProposals.map(task => (
@@ -399,12 +516,10 @@ export default function ChildApp() {
           </div>
         )}
 
-        <div style={styles.signOutLink} onClick={signOut}>
-          ログアウト
-        </div>
+        <div style={styles.signOutLink} onClick={signOut}>ログアウト</div>
       </div>
 
-      {/* ていあんするボタン */}
+      {/* 提案するボタン（固定） */}
       <button
         style={{
           ...styles.proposeBtn,
@@ -413,8 +528,12 @@ export default function ChildApp() {
         onClick={() => setShowProposalForm(true)}
         disabled={todayProposals >= PROPOSAL_LIMIT}
       >
-        💡 ミッションをていあんする
-        {todayProposals > 0 && ` (${todayProposals}/${PROPOSAL_LIMIT})`}
+        💡 ていあんする
+        {todayProposals > 0 && (
+          <span style={styles.proposalCount}>
+            {todayProposals}/{PROPOSAL_LIMIT}
+          </span>
+        )}
       </button>
 
       {/* 提案フォーム */}

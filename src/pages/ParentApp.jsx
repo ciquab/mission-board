@@ -11,7 +11,9 @@ import {
 import TaskForm from '../components/parent/TaskForm'
 import TaskCard from '../components/parent/TaskCard'
 import ProposalCard from '../components/parent/ProposalCard'
+import ChildProgressCard from '../components/parent/ChildProgressCard'
 
+const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
 const TAB_PROPOSALS = 'proposals'
 
@@ -85,16 +87,17 @@ const styles = {
   },
   tab: (active) => ({
     flex: 1,
-    padding: '0.85rem',
+    padding: '0.85rem 0.5rem',
     background: 'none',
     border: 'none',
     borderBottom: active ? '2px solid #2E75B6' : '2px solid transparent',
     marginBottom: '-2px',
     color: active ? '#2E75B6' : '#888',
     fontWeight: active ? 'bold' : 'normal',
-    fontSize: '0.9rem',
+    fontSize: '0.88rem',
     cursor: 'pointer',
     minHeight: 'auto',
+    whiteSpace: 'nowrap',
   }),
   tabBadge: {
     display: 'inline-block',
@@ -151,11 +154,63 @@ const styles = {
     color: '#aaa',
     padding: '3rem 1rem',
   },
+  // ダッシュボード用スタイル
+  summaryRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '0.75rem',
+    marginBottom: '1.25rem',
+  },
+  summaryCard: (color) => ({
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '1rem',
+    textAlign: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+    borderTop: `3px solid ${color}`,
+  }),
+  summaryNum: (color) => ({
+    fontSize: '1.8rem',
+    fontWeight: 'bold',
+    color,
+    lineHeight: 1,
+    marginBottom: '0.3rem',
+  }),
+  summaryLabel: {
+    fontSize: '0.75rem',
+    color: '#888',
+  },
+  dashSection: {
+    marginBottom: '1.25rem',
+  },
+  dashSectionTitle: {
+    fontSize: '0.85rem',
+    fontWeight: 'bold',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: '0.75rem',
+  },
+  childList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.65rem',
+  },
+  noChildMsg: {
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    textAlign: 'center',
+    color: '#aaa',
+    fontSize: '0.9rem',
+    lineHeight: 1.7,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+  },
 }
 
 export default function ParentApp() {
   const { user, signOut, switchRole } = useAuth()
-  const [tab, setTab] = useState(TAB_TASKS)
+  const [tab, setTab] = useState(TAB_DASHBOARD)
   const [tasks, setTasks] = useState([])
   const [children, setChildren] = useState([])
   const [loading, setLoading] = useState(true)
@@ -193,6 +248,13 @@ export default function ParentApp() {
   function getAssigneeName(task) {
     const child = children.find(c => c.user_id === task.assigned_to)
     return child?.name || task.assigned_to || '未割り当て'
+  }
+
+  // 子どもごとの統計を取得
+  function getChildStats(childId) {
+    const taskCount = activeTasks.filter(t => t.assigned_to === childId).length
+    const proposalCount = proposals.filter(t => t.created_by === childId).length
+    return { taskCount, proposalCount }
   }
 
   async function handleCreateTask(form) {
@@ -290,6 +352,9 @@ export default function ParentApp() {
 
       {/* タブ */}
       <div style={styles.tabs}>
+        <button style={styles.tab(tab === TAB_DASHBOARD)} onClick={() => setTab(TAB_DASHBOARD)}>
+          ダッシュボード
+        </button>
         <button style={styles.tab(tab === TAB_TASKS)} onClick={() => setTab(TAB_TASKS)}>
           タスク管理
         </button>
@@ -305,6 +370,78 @@ export default function ParentApp() {
       <div style={styles.body}>
         {error && <div style={styles.error}>{error}</div>}
 
+        {/* ---- ダッシュボード ---- */}
+        {tab === TAB_DASHBOARD && (
+          <>
+            {loading ? (
+              <div style={styles.loading}>よみこみちゅう…</div>
+            ) : (
+              <>
+                {/* サマリー統計 */}
+                <div style={styles.summaryRow}>
+                  <div style={styles.summaryCard('#2E75B6')}>
+                    <div style={styles.summaryNum('#2E75B6')}>{children.length}</div>
+                    <div style={styles.summaryLabel}>こども</div>
+                  </div>
+                  <div style={styles.summaryCard('#4CAF50')}>
+                    <div style={styles.summaryNum('#4CAF50')}>{activeTasks.length}</div>
+                    <div style={styles.summaryLabel}>アクティブタスク</div>
+                  </div>
+                  <div style={styles.summaryCard(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
+                    <div style={styles.summaryNum(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
+                      {proposals.length}
+                    </div>
+                    <div style={styles.summaryLabel}>承認待ち</div>
+                  </div>
+                </div>
+
+                {/* 子どもの一覧 */}
+                <div style={styles.dashSection}>
+                  <div style={styles.dashSectionTitle}>子どもの状況</div>
+                  {children.length === 0 ? (
+                    <div style={styles.noChildMsg}>
+                      子どものアカウントがまだ登録されていません。<br />
+                      子どもに「こどもモード」でログインしてもらい、<br />
+                      親のメールアドレスを入力してもらいましょう。
+                    </div>
+                  ) : (
+                    <div style={styles.childList}>
+                      {children.map(child => {
+                        const { taskCount, proposalCount } = getChildStats(child.user_id)
+                        return (
+                          <ChildProgressCard
+                            key={child.user_id}
+                            child={child}
+                            taskCount={taskCount}
+                            proposalCount={proposalCount}
+                          />
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 承認待ちがあれば誘導 */}
+                {proposals.length > 0 && (
+                  <div style={styles.dashSection}>
+                    <div style={styles.dashSectionTitle}>アクション必要</div>
+                    <button
+                      style={{
+                        ...styles.addBtn,
+                        background: '#F44336',
+                      }}
+                      onClick={() => setTab(TAB_PROPOSALS)}
+                    >
+                      💡 承認待ちの提案を確認する（{proposals.length}件）
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ---- タスク管理 ---- */}
         {tab === TAB_TASKS && (
           <>
             <button style={styles.addBtn} onClick={() => setShowForm(true)}>
@@ -334,6 +471,7 @@ export default function ParentApp() {
           </>
         )}
 
+        {/* ---- 承認待ち ---- */}
         {tab === TAB_PROPOSALS && (
           <>
             {loading ? (
