@@ -238,6 +238,18 @@ export async function getChildren(parentId) {
   return rows.filter(r => r[4] === parentId).map(rowToUser)
 }
 
+/** FCM トークンを users シートの push_endpoint カラムに保存する */
+export async function updateUserFcmToken(userId, fcmToken) {
+  const rows = await getRows(SHEETS.USERS, 'A2:G')
+  const rowIndex = rows.findIndex(r => r[0] === userId)
+  if (rowIndex === -1) throw new Error('ユーザーが見つかりません')
+
+  // push_endpoint（インデックス5）のみ更新
+  const updated = [...rows[rowIndex]]
+  updated[5] = fcmToken
+  await updateRow(SHEETS.USERS, rowIndex + 2, updated)
+}
+
 // ============================================================
 // 完了ログ操作
 // ============================================================

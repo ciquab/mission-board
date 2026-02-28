@@ -8,6 +8,7 @@ import {
   updateTaskApproval,
   getChildren,
 } from '../api/sheets'
+import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
 import TaskCard from '../components/parent/TaskCard'
 import ProposalCard from '../components/parent/ProposalCard'
@@ -210,6 +211,7 @@ const styles = {
 
 export default function ParentApp() {
   const { user, signOut, switchRole } = useAuth()
+  const { supported: notifSupported, permission, enabled: notifEnabled, loading: notifLoading, enable: enableNotif, disable: disableNotif } = useNotifications(user.id)
   const [tab, setTab] = useState(TAB_DASHBOARD)
   const [tasks, setTasks] = useState([])
   const [children, setChildren] = useState([])
@@ -341,6 +343,17 @@ export default function ParentApp() {
           </div>
         </div>
         <div style={styles.headerRight}>
+          {/* 通知トグルボタン（denied の場合は非表示） */}
+          {notifSupported && permission !== 'denied' && (
+            <button
+              style={styles.switchBtn}
+              onClick={notifEnabled ? disableNotif : enableNotif}
+              disabled={notifLoading}
+              title={notifEnabled ? '通知をオフにする' : '通知をオンにする'}
+            >
+              {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
+            </button>
+          )}
           <button style={styles.switchBtn} onClick={() => switchRole('child')}>
             子どもモードへ
           </button>

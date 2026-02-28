@@ -6,6 +6,7 @@ import {
   logTaskCompletion,
   getUserPoints,
 } from '../api/sheets'
+import { useNotifications } from '../hooks/useNotifications'
 import MissionCard from '../components/child/MissionCard'
 import ProposalForm from '../components/child/ProposalForm'
 import { fireAllDoneConfetti } from '../utils/confetti'
@@ -283,6 +284,7 @@ const styles = {
 
 export default function ChildApp() {
   const { user, signOut, switchRole } = useAuth()
+  const { supported: notifSupported, permission, enabled: notifEnabled, loading: notifLoading, enable: enableNotif, disable: disableNotif } = useNotifications(user.id)
   const [activeTimeBlock, setActiveTimeBlock] = useState(getCurrentTimeBlock())
   const [tasks, setTasks] = useState([])
   const [points, setPoints] = useState(0)
@@ -417,6 +419,17 @@ export default function ChildApp() {
             <div style={styles.pointDisplay}>
               ⭐ {points} pt
             </div>
+            {/* 通知トグルボタン（denied の場合は非表示） */}
+            {notifSupported && permission !== 'denied' && (
+              <button
+                style={styles.switchBtn}
+                onClick={notifEnabled ? disableNotif : enableNotif}
+                disabled={notifLoading}
+                title={notifEnabled ? 'つうちをオフ' : 'つうちをオン'}
+              >
+                {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
+              </button>
+            )}
             {user.role === 'child' && (
               <button style={styles.switchBtn} onClick={() => switchRole('parent')}>
                 おやモードへ

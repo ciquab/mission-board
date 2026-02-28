@@ -1,77 +1,173 @@
 /**
- * Google Apps Script: 通知トリガー
- * 
+ * Google Apps Script: FCM 通知トリガー
+ *
  * セットアップ方法:
  * 1. script.google.com で新しいプロジェクトを作成
  * 2. このコードを貼り付ける
- * 3. SPREADSHEET_ID と VAPID_PRIVATE_KEY を設定する
+ * 3. スクリプトプロパティに以下を設定:
+ *    - SPREADSHEET_ID: スプレッドシートの ID
+ *    - FIREBASE_PROJECT_ID: Firebase プロジェクト ID
+ *    - FIREBASE_SERVICE_ACCOUNT: サービスアカウント JSON 全体の文字列
  * 4. checkAndSendNotifications を時間ベーストリガーで5分ごとに実行する
+ * 5. generateDailyNotifications を毎日0時に実行するトリガーを設定する
  */
 
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE'
+// ============================================================
+// FCM HTTP v1 API 呼び出し
+// ============================================================
 
 /**
- * メイン関数: 通知チェックと送信
- * 5分ごとに実行するトリガーを設定する
+ * サービスアカウントの秘密鍵から Firebase アクセストークンを取得する
+ * GAS の Utilities.computeRsaSha256Signature で JWT 署名する
  */
-function checkAndSendNotifications() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const notifSheet = ss.getSheetByName('notifications')
-  const rows = notifSheet.getDataRange().getValues()
+function getFirebaseAccessToken() {
+  const props = PropertiesService.getScriptProperties()
+  const sa = JSON.parse(props.getProperty('FIREBASE_SERVICE_ACCOUNT'))
 
-  const now = new Date()
+  const now = Math.floor(Date.now() / 1000)
+  const header = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const claim = base64UrlEncode(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  }))
 
-  rows.slice(1).forEach((row, i) => {
-    const [id, taskId, userId, type, scheduledAt, sent] = row
-    if (sent === true || sent === 'TRUE') return
+  const sigInput = `${header}.${claim}`
+  const sigBytes = Utilities.computeRsaSha256Signature(sigInput, sa.private_key)
+  const sig = Utilities.base64EncodeWebSafe(sigBytes).replace(/=+$/, '')
+  const jwt = `${sigInput}.${sig}`
 
-    const scheduledDate = new Date(scheduledAt)
-    if (scheduledDate <= now) {
-      // 通知を送信する
-      const success = sendPushNotification(userId, type, taskId)
-      if (success) {
-        // sentフラグを更新
-        notifSheet.getRange(i + 2, 6).setValue(true)
-        notifSheet.getRange(i + 2, 7).setValue(new Date().toISOString())
-      }
-    }
+  const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    contentType: 'application/x-www-form-urlencoded',
+    payload: `grant_type=urn%3Aietf%3Aparams%3Aoauth2%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+    muteHttpExceptions: true,
   })
+
+  const data = JSON.parse(res.getContentText())
+  if (!data.access_token) {
+    throw new Error('アクセストークン取得失敗: ' + res.getContentText())
+  }
+  return data.access_token
 }
 
 /**
- * プッシュ通知を送信する
- * TODO: Web Push ライブラリを使って実装する
+ * 文字列を Base64URL エンコードする（JWT 用）
  */
-function sendPushNotification(userId, type, taskId) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const usersSheet = ss.getSheetByName('users')
-  const users = usersSheet.getDataRange().getValues()
+function base64UrlEncode(str) {
+  return Utilities.base64EncodeWebSafe(str).replace(/=+$/, '')
+}
 
-  // ユーザーのpush_endpointを取得
-  const userRow = users.find(row => row[0] === userId)
-  if (!userRow || !userRow[5]) return false // push_endpoint なし
+/**
+ * FCM HTTP v1 API でプッシュ通知を送信する
+ * @param {string} fcmToken - 送信先デバイスの FCM トークン
+ * @param {string} title - 通知タイトル
+ * @param {string} body - 通知本文
+ * @param {string} linkUrl - 通知タップ時の遷移先 URL
+ * @returns {boolean} 送信成功かどうか
+ */
+function sendFcmNotification(fcmToken, title, body, linkUrl) {
+  const props = PropertiesService.getScriptProperties()
+  const projectId = props.getProperty('FIREBASE_PROJECT_ID')
+  const appUrl = 'https://ciquab.github.io/mission-board/'
 
-  const pushEndpoint = userRow[5]
-  const message = buildMessage(type, taskId)
-
-  // Web Push API への送信
-  // 実際の実装はVAPIDキーを使ったJWT署名が必要
-  // 参考: https://web.dev/push-notifications-server-codelab/
+  let accessToken
   try {
-    const response = UrlFetchApp.fetch(pushEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // 'Authorization': 'vapid ...' // VAPID JWT をここに設定
-      },
-      payload: JSON.stringify(message),
-      muteHttpExceptions: true,
-    })
-    return response.getResponseCode() < 300
+    accessToken = getFirebaseAccessToken()
   } catch (e) {
-    console.error('通知送信エラー:', e)
+    console.error('Firebase トークン取得エラー:', e.message)
     return false
   }
+
+  const payload = {
+    message: {
+      token: fcmToken,
+      notification: { title, body },
+      webpush: {
+        notification: {
+          icon: appUrl + 'favicon.svg',
+          badge: appUrl + 'favicon.svg',
+        },
+        fcm_options: {
+          link: linkUrl || appUrl,
+        },
+      },
+    },
+  }
+
+  try {
+    const res = UrlFetchApp.fetch(
+      `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      }
+    )
+    const code = res.getResponseCode()
+    if (code >= 200 && code < 300) return true
+
+    console.error('FCM 送信失敗:', code, res.getContentText())
+    return false
+  } catch (e) {
+    console.error('FCM 送信例外:', e.message)
+    return false
+  }
+}
+
+// ============================================================
+// メイン処理
+// ============================================================
+
+/**
+ * 通知チェックと送信
+ * 5分ごとに実行するトリガーを設定する
+ */
+function checkAndSendNotifications() {
+  const props = PropertiesService.getScriptProperties()
+  const spreadsheetId = props.getProperty('SPREADSHEET_ID')
+  const ss = SpreadsheetApp.openById(spreadsheetId)
+  const notifSheet = ss.getSheetByName('notifications')
+  const usersSheet = ss.getSheetByName('users')
+
+  const notifRows = notifSheet.getDataRange().getValues()
+  const userRows = usersSheet.getDataRange().getValues()
+  const now = new Date()
+
+  notifRows.slice(1).forEach((row, i) => {
+    const [id, taskId, userId, type, scheduledAt, sent] = row
+
+    // 送信済みはスキップ
+    if (sent === true || sent === 'TRUE' || sent === true) return
+
+    // 時刻が来ていないものはスキップ
+    const scheduledDate = new Date(scheduledAt)
+    if (scheduledDate > now) return
+
+    // users シートから FCM トークン（push_endpoint カラム）を取得
+    const userRow = userRows.find(r => r[0] === userId)
+    if (!userRow || !userRow[5]) {
+      // FCM トークンが未登録でも送信済みフラグを立てる（再試行しない）
+      notifSheet.getRange(i + 2, 6).setValue(true)
+      notifSheet.getRange(i + 2, 7).setValue(new Date().toISOString())
+      return
+    }
+
+    const fcmToken = userRow[5]
+    const { title, body } = buildMessage(type, taskId)
+    const success = sendFcmNotification(fcmToken, title, body, '')
+
+    if (success) {
+      notifSheet.getRange(i + 2, 6).setValue(true)
+      notifSheet.getRange(i + 2, 7).setValue(new Date().toISOString())
+    }
+  })
 }
 
 /**
@@ -79,13 +175,13 @@ function sendPushNotification(userId, type, taskId) {
  */
 function buildMessage(type, taskId) {
   const messages = {
-    reminder: { title: 'ミッションボード ⏰', body: 'そろそろじかんだよ！ミッションをかくにんしよう！' },
-    followup: { title: 'ミッションボード 📣', body: 'まだおわってないミッションがあるよ！' },
-    approval: { title: 'ミッションボード ✅', body: 'こどもがタスクをかんりょうしたよ！かくにんしてね。' },
-    proposal: { title: 'ミッションボード 💡', body: 'こどもからミッションのていあんがとどいたよ！' },
-    result:   { title: 'ミッションボード 🎉', body: 'ていあんのけっかがとどいたよ！かくにんしよう！' },
-    summary:  { title: 'ミッションボード 📊', body: 'きょうのミッションのまとめだよ！おつかれさま！' },
-    streak:   { title: 'ミッションボード 🔥', body: 'れんぞくたっせいおめでとう！すごいね！' },
+    reminder:  { title: 'ミッションボード ⏰', body: 'そろそろじかんだよ！ミッションをかくにんしよう！' },
+    followup:  { title: 'ミッションボード 📣', body: 'まだおわってないミッションがあるよ！' },
+    approval:  { title: 'ミッションボード ✅', body: 'こどもがタスクをかんりょうしたよ！かくにんしてね。' },
+    proposal:  { title: 'ミッションボード 💡', body: 'こどもからミッションのていあんがとどいたよ！' },
+    result:    { title: 'ミッションボード 🎉', body: 'ていあんのけっかがとどいたよ！かくにんしよう！' },
+    summary:   { title: 'ミッションボード 📊', body: 'きょうのミッションのまとめだよ！おつかれさま！' },
+    streak:    { title: 'ミッションボード 🔥', body: 'れんぞくたっせいおめでとう！すごいね！' },
   }
   return messages[type] || { title: 'ミッションボード', body: 'おしらせがあるよ！' }
 }
@@ -95,14 +191,16 @@ function buildMessage(type, taskId) {
  * 毎日0時に実行するトリガーを設定する
  */
 function generateDailyNotifications() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
+  const props = PropertiesService.getScriptProperties()
+  const spreadsheetId = props.getProperty('SPREADSHEET_ID')
+  const ss = SpreadsheetApp.openById(spreadsheetId)
   const tasksSheet = ss.getSheetByName('tasks')
   const notifSheet = ss.getSheetByName('notifications')
   const tasks = tasksSheet.getDataRange().getValues()
 
   const today = new Date()
-  const dayOfWeek = today.getDay() // 0=日, 1=月, ..., 6=土
 
+  // 時間帯ごとの通知時刻（各時間帯の15分前）
   const timeBlocks = {
     morning:   '07:30',
     afternoon: '15:00',
@@ -115,9 +213,6 @@ function generateDailyNotifications() {
     const [taskId, , , type, recurrence, timeBlock, assignedTo, , , approvalStatus, , , , , status] = row
     if (status !== 'active' || approvalStatus === 'pending') return
     if (type !== 'routine') return
-
-    // 今日が対象の曜日か判定（weeklyの場合）
-    // 簡易実装: dailyは毎日、それ以外はスキップ
     if (recurrence !== 'daily') return
 
     const timeStr = timeBlocks[timeBlock]
@@ -125,7 +220,7 @@ function generateDailyNotifications() {
 
     const [h, m] = timeStr.split(':').map(Number)
     const scheduledAt = new Date(today)
-    scheduledAt.setHours(h - 0, m - 15, 0, 0) // 15分前に通知
+    scheduledAt.setHours(h, m - 15, 0, 0) // 15分前に通知
 
     notifSheet.appendRow([
       `notif_${Date.now()}_${taskId}`,
@@ -137,4 +232,23 @@ function generateDailyNotifications() {
       '',
     ])
   })
+}
+
+// ============================================================
+// テスト用関数
+// ============================================================
+
+/**
+ * 特定の FCM トークンにテスト通知を送信する（GAS エディタから手動実行）
+ * 実行前に引数を変更してください
+ */
+function testSendNotification() {
+  const testToken = 'YOUR_FCM_TOKEN_HERE'
+  const success = sendFcmNotification(
+    testToken,
+    'テスト通知 🔔',
+    'ミッションボードからのテストメッセージです！',
+    ''
+  )
+  console.log('送信結果:', success ? '成功' : '失敗')
 }

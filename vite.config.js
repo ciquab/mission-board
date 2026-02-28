@@ -27,6 +27,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // firebase-messaging-sw.js は FCM が管理するため Workbox のキャッシュ対象外にする
+        globIgnores: ['**/firebase-messaging-sw.js'],
         // Sheets APIのレスポンスをキャッシュ（最大5分）
         runtimeCaching: [
           {
