@@ -51,7 +51,7 @@ function handleApiError(res) {
  */
 export async function getRows(sheetName, range = '') {
   const rangeStr = range ? `${sheetName}!${range}` : sheetName
-  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(rangeStr)}?key=${API_KEY}`
+  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(rangeStr)}`
 
   const res = await fetch(url, { headers: authHeaders() })
   if (!res.ok) handleApiError(res)
