@@ -562,21 +562,6 @@ export default function ParentApp() {
     }
   }
 
-  // 子どもを選択して完了ログを読み込む
-  async function handleSelectHistoryChild(childId) {
-    setHistoryChildId(childId)
-    if (childLogs[childId]) return // キャッシュ済みならスキップ
-    setHistoryLoading(true)
-    try {
-      const logs = await getTaskLogsWithDetails(childId)
-      setChildLogs(prev => ({ ...prev, [childId]: logs }))
-    } catch (e) {
-      setError('履歴の読み込みに失敗しました。' + e.message)
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
-
   async function handleApprove(taskId, pointValue) {
     setError('')
     try {
