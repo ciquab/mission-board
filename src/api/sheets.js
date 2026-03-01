@@ -328,6 +328,35 @@ export async function getUserPoints(userId) {
     .reduce((sum, r) => sum + Number(r[6] || 0), 0)
 }
 
+/**
+ * ユーザーの完了ログをタスク名付きで取得する
+ * @param {string} userId
+ * @returns {{ log_id, task_id, title, completed_at, points_earned }[]} 新しい順
+ */
+export async function getTaskLogsWithDetails(userId) {
+  const [logRows, taskRows] = await Promise.all([
+    getRows(SHEETS.TASK_LOGS, 'A2:G'),
+    getRows(SHEETS.TASKS, 'A2:O'),
+  ])
+
+  // task_id → title のマップを作成
+  const titleMap = {}
+  for (const r of taskRows) {
+    titleMap[r[0]] = r[1] || '不明なタスク'
+  }
+
+  return logRows
+    .filter(r => r[1] === userId)
+    .map(r => ({
+      log_id: r[0],
+      task_id: r[1],
+      title: titleMap[r[1]] || '不明なタスク',
+      completed_at: r[3] || '',
+      points_earned: Number(r[6] || 0),
+    }))
+    .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+}
+
 /** 連続達成日数（ストリーク）を計算 */
 export async function getStreak(userId) {
   const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')

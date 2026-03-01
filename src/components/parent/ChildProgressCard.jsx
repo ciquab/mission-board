@@ -52,6 +52,11 @@ const styles = {
     background: '#F5F5F5',
     color: '#999',
   },
+  pointsStat: {
+    background: 'linear-gradient(135deg, #FFF8E1, #FFF3CD)',
+    color: '#E65100',
+    border: '1px solid #FFE082',
+  },
   badge: {
     width: '28px',
     height: '28px',
@@ -67,7 +72,7 @@ const styles = {
   },
 }
 
-export default function ChildProgressCard({ child, taskCount, proposalCount }) {
+export default function ChildProgressCard({ child, taskCount, proposalCount, points }) {
   const initial = child.name ? child.name[0].toUpperCase() : '?'
 
   return (
@@ -84,6 +89,11 @@ export default function ChildProgressCard({ child, taskCount, proposalCount }) {
           {proposalCount > 0 && (
             <span style={{ ...styles.stat, ...styles.pendingStat }}>
               💡 承認待ち {proposalCount}件
+            </span>
+          )}
+          {points != null && (
+            <span style={{ ...styles.stat, ...styles.pointsStat }}>
+              ⭐ {points} pt
             </span>
           )}
         </div>
