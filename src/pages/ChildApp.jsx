@@ -42,6 +42,19 @@ function getToday() {
   return new Date().toDateString()
 }
 
+// 今日このタスクを表示すべきかを recurrence 文字列で判定
+function isTaskScheduledToday(recurrence) {
+  if (!recurrence || recurrence === 'daily' || recurrence === 'weekly') return true
+  if (recurrence.startsWith('weekly:')) {
+    const days = recurrence.split(':')[1].split(',').map(Number)
+    return days.includes(new Date().getDay())
+  }
+  if (recurrence.startsWith('monthly:')) {
+    return new Date().getDate() === Number(recurrence.split(':')[1])
+  }
+  return true
+}
+
 // 1日の提案上限
 const PROPOSAL_LIMIT = 5
 
@@ -408,7 +421,9 @@ export default function ChildApp() {
   })
 
   // 承認済みタスク全体
-  const allTasks = tasks.filter(t => t.approval_status !== 'pending')
+  const allTasks = tasks.filter(t =>
+    t.approval_status !== 'pending' && isTaskScheduledToday(t.recurrence)
+  )
   // 今日の全体進捗
   const completedTodayCount = allTasks.filter(t => completedIds.includes(t.task_id)).length
   const progressPct = allTasks.length > 0
@@ -416,7 +431,9 @@ export default function ChildApp() {
     : 0
   // 現在の時間帯のミッション
   const currentMissions = tasks.filter(t =>
-    t.time_block === activeTimeBlock && t.approval_status !== 'pending'
+    t.time_block === activeTimeBlock &&
+    t.approval_status !== 'pending' &&
+    isTaskScheduledToday(t.recurrence)
   )
   // 承認待ちの提案
   const pendingProposals = tasks.filter(t => t.approval_status === 'pending')

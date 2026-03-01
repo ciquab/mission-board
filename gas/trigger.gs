@@ -193,11 +193,24 @@ function generateDailyNotifications() {
     bedtime:   '21:00',
   }
 
+  // recurrence 文字列が今日スケジュールされているか判定
+  function isScheduledToday(recurrence, today) {
+    if (!recurrence || recurrence === 'daily' || recurrence === 'weekly') return true
+    if (recurrence.startsWith('weekly:')) {
+      const days = recurrence.split(':')[1].split(',').map(Number)
+      return days.includes(today.getDay())
+    }
+    if (recurrence.startsWith('monthly:')) {
+      return today.getDate() === Number(recurrence.split(':')[1])
+    }
+    return true
+  }
+
   tasks.slice(1).forEach(row => {
     const [taskId, , , type, recurrence, timeBlock, assignedTo, , , approvalStatus, , , , , status] = row
     if (status !== 'active' || approvalStatus === 'pending') return
     if (type !== 'routine') return
-    if (recurrence !== 'daily') return
+    if (!isScheduledToday(recurrence, today)) return
 
     const timeStr = timeBlocks[timeBlock]
     if (!timeStr) return

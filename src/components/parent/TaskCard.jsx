@@ -11,6 +11,21 @@ const TYPE_LABELS = {
   spot: 'スポット',
 }
 
+const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
+
+function formatRecurrence(recurrence) {
+  if (!recurrence || recurrence === 'daily') return '毎日'
+  if (recurrence === 'weekly') return '毎週'
+  if (recurrence.startsWith('weekly:')) {
+    const days = recurrence.split(':')[1].split(',').map(Number).map(d => DAY_NAMES[d])
+    return '毎週 ' + days.join('・')
+  }
+  if (recurrence.startsWith('monthly:')) {
+    return `毎月${recurrence.split(':')[1]}日`
+  }
+  return recurrence
+}
+
 const styles = {
   card: {
     background: '#fff',
@@ -103,6 +118,9 @@ export default function TaskCard({ task, assigneeName, onEdit, onDelete }) {
         <div style={styles.meta}>
           <span style={styles.badge('#2E75B6')}>{TIME_BLOCK_LABELS[task.time_block] || task.time_block}</span>
           <span style={styles.badge('#666')}>{TYPE_LABELS[task.type] || task.type}</span>
+          {task.type === 'routine' && (
+            <span style={styles.badge('#4CAF50')}>{formatRecurrence(task.recurrence)}</span>
+          )}
           <span style={styles.badge('#FFB300')}>{task.point_value}pt</span>
           {task.require_approval === 'true' && (
             <span style={styles.badge('#9C27B0')}>承認必要</span>

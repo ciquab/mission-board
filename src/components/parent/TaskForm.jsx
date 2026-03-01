@@ -10,6 +10,30 @@ const TIME_BLOCKS = [
 
 const ICONS = ['📚', '🖊️', '🧹', '🍳', '🏃', '🎮', '🎨', '🎵', '🐕', '🌿', '🧺', '🦷', '🛁', '💤', '⭐']
 
+const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
+
+/** recurrence 文字列から種別を取得 */
+function getRecurrenceType(r) {
+  if (!r || r === 'daily') return 'daily'
+  if (r === 'weekly' || r.startsWith('weekly:')) return 'weekly'
+  if (r.startsWith('monthly:')) return 'monthly'
+  return 'daily'
+}
+
+/** recurrence 文字列から曜日番号配列を取得 */
+function getWeeklyDays(r) {
+  if (!r.startsWith('weekly:')) return [1]
+  const part = r.split(':')[1]
+  if (!part) return [1]
+  return part.split(',').map(Number).filter(n => n >= 0 && n <= 6)
+}
+
+/** recurrence 文字列から日付番号を取得 */
+function getMonthlyDay(r) {
+  if (!r.startsWith('monthly:')) return 1
+  return Number(r.split(':')[1]) || 1
+}
+
 const styles = {
   overlay: {
     position: 'fixed',
@@ -184,6 +208,32 @@ export default function TaskForm({ initialData, children, onSubmit, onClose, sub
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
+  function handleRecurrenceTypeChange(type) {
+    if (type === 'daily') {
+      set('recurrence', 'daily')
+    } else if (type === 'weekly') {
+      const days = getWeeklyDays(form.recurrence)
+      set('recurrence', `weekly:${days.length > 0 ? days.join(',') : '1'}`)
+    } else if (type === 'monthly') {
+      const day = getMonthlyDay(form.recurrence)
+      set('recurrence', `monthly:${day}`)
+    }
+  }
+
+  function toggleWeeklyDay(dayIndex) {
+    const days = getWeeklyDays(form.recurrence)
+    const newDays = days.includes(dayIndex)
+      ? days.filter(d => d !== dayIndex)
+      : [...days, dayIndex].sort((a, b) => a - b)
+    if (newDays.length === 0) return // 最低1曜日は必須
+    set('recurrence', `weekly:${newDays.join(',')}`)
+  }
+
+  function handleMonthlyDayChange(value) {
+    const day = Math.min(31, Math.max(1, Number(value) || 1))
+    set('recurrence', `monthly:${day}`)
+  }
+
   function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
@@ -252,11 +302,74 @@ export default function TaskForm({ initialData, children, onSubmit, onClose, sub
           {form.type === 'routine' && (
             <div style={styles.field}>
               <label style={styles.label}>繰り返し</label>
-              <select style={styles.select} value={form.recurrence} onChange={e => set('recurrence', e.target.value)}>
-                <option value="daily">毎日</option>
-                <option value="weekly">毎週</option>
-                <option value="custom">カスタム</option>
-              </select>
+              {/* 種別タブ */}
+              <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.5rem' }}>
+                {[
+                  { value: 'daily', label: '毎日' },
+                  { value: 'weekly', label: '曜日指定' },
+                  { value: 'monthly', label: '毎月' },
+                ].map(opt => {
+                  const active = getRecurrenceType(form.recurrence) === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleRecurrenceTypeChange(opt.value)}
+                      style={{
+                        flex: 1, padding: '0.45rem 0.25rem',
+                        border: `2px solid ${active ? '#2E75B6' : '#ddd'}`,
+                        borderRadius: '6px',
+                        background: active ? '#EBF2FA' : '#fff',
+                        color: active ? '#2E75B6' : '#666',
+                        fontSize: '0.8rem', cursor: 'pointer', minHeight: 'auto',
+                        fontWeight: active ? 'bold' : 'normal',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* 曜日選択 */}
+              {getRecurrenceType(form.recurrence) === 'weekly' && (
+                <div style={{ display: 'flex', gap: '0.2rem' }}>
+                  {DAY_NAMES.map((name, i) => {
+                    const selected = getWeeklyDays(form.recurrence).includes(i)
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleWeeklyDay(i)}
+                        style={{
+                          flex: 1, padding: '0.45rem 0',
+                          border: `2px solid ${selected ? '#2E75B6' : '#ddd'}`,
+                          borderRadius: '6px',
+                          background: selected ? '#EBF2FA' : '#fff',
+                          color: selected ? '#2E75B6' : '#999',
+                          fontSize: '0.8rem', cursor: 'pointer', minHeight: 'auto',
+                          fontWeight: selected ? 'bold' : 'normal',
+                        }}
+                      >
+                        {name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {/* 日付選択 */}
+              {getRecurrenceType(form.recurrence) === 'monthly' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.88rem', color: '#555' }}>毎月</span>
+                  <input
+                    type="number"
+                    min="1" max="31"
+                    value={getMonthlyDay(form.recurrence)}
+                    onChange={e => handleMonthlyDayChange(e.target.value)}
+                    style={{ width: '64px', padding: '0.4rem', border: '1.5px solid #ddd', borderRadius: '6px', fontSize: '0.95rem', textAlign: 'center' }}
+                  />
+                  <span style={{ fontSize: '0.88rem', color: '#555' }}>日</span>
+                </div>
+              )}
             </div>
           )}
         </div>
