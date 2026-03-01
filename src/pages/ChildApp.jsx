@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import {
   getTasksForUser,
   createTask,
+  archiveTask,
   logTaskCompletion,
   getUserPoints,
   getStreak,
@@ -308,6 +309,41 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+    justifyContent: 'space-between',
+  },
+  cancelProposalBtn: {
+    background: 'none',
+    border: '1px solid #FFCC02',
+    borderRadius: '6px',
+    color: '#F57F17',
+    fontSize: '0.75rem',
+    padding: '0.25rem 0.5rem',
+    cursor: 'pointer',
+    minHeight: 'unset',
+    flexShrink: 0,
+  },
+  rejectedItem: {
+    background: '#FFF5F5',
+    border: '1px solid #FFCDD2',
+    borderRadius: '10px',
+    padding: '0.65rem 0.9rem',
+    fontSize: '0.9rem',
+    color: '#555',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    justifyContent: 'space-between',
+  },
+  dismissBtn: {
+    background: 'none',
+    border: '1px solid #EF9A9A',
+    borderRadius: '6px',
+    color: '#C62828',
+    fontSize: '0.75rem',
+    padding: '0.25rem 0.5rem',
+    cursor: 'pointer',
+    minHeight: 'unset',
+    flexShrink: 0,
   },
   signOutLink: {
     textAlign: 'center',
@@ -423,6 +459,14 @@ export default function ChildApp() {
     return Number(localStorage.getItem(key) || 0)
   })
 
+  // 却下済み提案で「わかった」を押したもの（ローカル管理）
+  const [dismissedRejected, setDismissedRejected] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`dismissed_rejected_${user.id}`)
+      return new Set(JSON.parse(raw || '[]'))
+    } catch { return new Set() }
+  })
+
   // 承認済みタスク全体
   const allTasks = tasks.filter(t =>
     t.approval_status !== 'pending' && isTaskScheduledToday(t.recurrence)
@@ -440,6 +484,12 @@ export default function ChildApp() {
   )
   // 承認待ちの提案
   const pendingProposals = tasks.filter(t => t.approval_status === 'pending')
+  // 却下された提案（未dismissのもの）
+  const rejectedProposals = tasks.filter(t =>
+    t.approval_status === 'rejected' && !dismissedRejected.has(t.task_id)
+  )
+  // サーバー側 pending 件数と localStorage 件数の大きい方を上限チェックに使う
+  const effectiveProposalCount = Math.max(todayProposals, pendingProposals.length)
   // 全ミッション完了フラグ
   const allDone = currentMissions.length > 0 &&
     currentMissions.every(m => completedIds.includes(m.task_id))
@@ -520,7 +570,7 @@ export default function ChildApp() {
   }
 
   async function handlePropose(form) {
-    if (todayProposals >= PROPOSAL_LIMIT) {
+    if (effectiveProposalCount >= PROPOSAL_LIMIT) {
       setError(`きょうのていあんはもう${PROPOSAL_LIMIT}こだよ。あしたまたしてね！`)
       return
     }
@@ -529,8 +579,6 @@ export default function ChildApp() {
     try {
       await createTask({
         ...form,
-        type: 'routine',
-        recurrence: 'daily',
         assigned_to: user.id,
         created_by: user.id,
         created_by_role: 'child',
@@ -552,6 +600,24 @@ export default function ChildApp() {
     } finally {
       setSubmittingProposal(false)
     }
+  }
+
+  // 承認待ち提案を取り消す
+  async function handleCancelProposal(taskId) {
+    try {
+      await archiveTask(taskId)
+      await loadData()
+    } catch (e) {
+      setError('とりけしに失敗しました。' + e.message)
+    }
+  }
+
+  // 却下通知を「わかった」で非表示にする
+  function handleDismissRejected(taskId) {
+    const next = new Set(dismissedRejected)
+    next.add(taskId)
+    setDismissedRejected(next)
+    localStorage.setItem(`dismissed_rejected_${user.id}`, JSON.stringify([...next]))
   }
 
   // バッジモーダルを閉じる（複数バッジの場合は次へ進む）
@@ -706,6 +772,31 @@ export default function ChildApp() {
               </>
             )}
 
+            {/* 却下された提案の通知 */}
+            {!loading && rejectedProposals.length > 0 && (
+              <div style={styles.proposalSection}>
+                <div style={styles.sectionTitle}>
+                  ❌ ていあんがきゃっかされたよ（{rejectedProposals.length}件）
+                </div>
+                <div style={styles.pendingList}>
+                  {rejectedProposals.map(task => (
+                    <div key={task.task_id} style={styles.rejectedItem}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                        <span>{task.icon || '💡'}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</span>
+                      </span>
+                      <button
+                        style={styles.dismissBtn}
+                        onClick={() => handleDismissRejected(task.task_id)}
+                      >
+                        わかった
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 承認待ちの提案一覧 */}
             {!loading && pendingProposals.length > 0 && (
               <div style={styles.proposalSection}>
@@ -715,8 +806,16 @@ export default function ChildApp() {
                 <div style={styles.pendingList}>
                   {pendingProposals.map(task => (
                     <div key={task.task_id} style={styles.pendingItem}>
-                      <span>{task.icon || '💡'}</span>
-                      <span>{task.title}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                        <span>{task.icon || '💡'}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</span>
+                      </span>
+                      <button
+                        style={styles.cancelProposalBtn}
+                        onClick={() => handleCancelProposal(task.task_id)}
+                      >
+                        とりけす
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -752,15 +851,15 @@ export default function ChildApp() {
         <button
           style={{
             ...styles.proposeBtn,
-            opacity: todayProposals >= PROPOSAL_LIMIT ? 0.5 : 1,
+            opacity: effectiveProposalCount >= PROPOSAL_LIMIT ? 0.5 : 1,
           }}
           onClick={() => setShowProposalForm(true)}
-          disabled={todayProposals >= PROPOSAL_LIMIT}
+          disabled={effectiveProposalCount >= PROPOSAL_LIMIT}
         >
           💡 ていあんする
-          {todayProposals > 0 && (
+          {effectiveProposalCount > 0 && (
             <span style={styles.proposalCount}>
-              {todayProposals}/{PROPOSAL_LIMIT}
+              {effectiveProposalCount}/{PROPOSAL_LIMIT}
             </span>
           )}
         </button>
