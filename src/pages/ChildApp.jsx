@@ -15,7 +15,6 @@ import MissionCard from '../components/child/MissionCard'
 import ProposalForm from '../components/child/ProposalForm'
 import BadgePanel from '../components/child/BadgePanel'
 import RewardShop from '../components/child/RewardShop'
-import PinModal from '../components/child/PinModal'
 import { fireAllDoneConfetti } from '../utils/confetti'
 import { getBadgeDef } from '../utils/badges'
 
@@ -373,7 +372,7 @@ const styles = {
 }
 
 export default function ChildApp() {
-  const { user, signOut, switchRole } = useAuth()
+  const { user, signOut } = useAuth()
   const { supported: notifSupported, permission, enabled: notifEnabled, loading: notifLoading, enable: enableNotif, disable: disableNotif } = useNotifications(user.id)
   const [pageTab, setPageTab] = useState(TAB_MISSION)
   const [activeTimeBlock, setActiveTimeBlock] = useState(getCurrentTimeBlock())
@@ -392,7 +391,6 @@ export default function ChildApp() {
   const [newBadges, setNewBadges] = useState([])  // 取得した badge_type 配列
   const [badgeModalIdx, setBadgeModalIdx] = useState(0)
   // おやモード切り替えPINモーダル
-  const [showPinModal, setShowPinModal] = useState(false)
 
   // ローカルで完了済みを管理（当日のみ）
   const [completedIds, setCompletedIds] = useState(() => {
@@ -569,11 +567,6 @@ export default function ChildApp() {
                 {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
               </button>
             )}
-            {user.role === 'child' && (
-              <button style={styles.switchBtn} onClick={() => setShowPinModal(true)}>
-                おやモードへ
-              </button>
-            )}
           </div>
         </div>
 
@@ -738,15 +731,6 @@ export default function ChildApp() {
           onSubmit={handlePropose}
           onClose={() => setShowProposalForm(false)}
           submitting={submittingProposal}
-        />
-      )}
-
-      {/* おやモード切り替えPINモーダル */}
-      {showPinModal && (
-        <PinModal
-          parentId={user.parent_id || user.id}
-          onSuccess={() => { setShowPinModal(false); switchRole('parent') }}
-          onClose={() => setShowPinModal(false)}
         />
       )}
 

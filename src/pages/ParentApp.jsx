@@ -15,7 +15,6 @@ import TaskCard from '../components/parent/TaskCard'
 import ProposalCard from '../components/parent/ProposalCard'
 import ChildProgressCard from '../components/parent/ChildProgressCard'
 import RewardManager from '../components/parent/RewardManager'
-import PinSettings from '../components/parent/PinSettings'
 
 const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
@@ -214,7 +213,7 @@ const styles = {
 }
 
 export default function ParentApp() {
-  const { user, signOut, switchRole } = useAuth()
+  const { user, signOut } = useAuth()
   const { supported: notifSupported, permission, enabled: notifEnabled, loading: notifLoading, enable: enableNotif, disable: disableNotif } = useNotifications(user.id)
   const [tab, setTab] = useState(TAB_DASHBOARD)
   const [tasks, setTasks] = useState([])
@@ -361,9 +360,6 @@ export default function ParentApp() {
               {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
             </button>
           )}
-          <button style={styles.switchBtn} onClick={() => switchRole('child')}>
-            子どもモードへ
-          </button>
           <button style={styles.signOutBtn} onClick={signOut}>
             ログアウト
           </button>
@@ -420,9 +416,6 @@ export default function ParentApp() {
                     <div style={styles.summaryLabel}>承認待ち</div>
                   </div>
                 </div>
-
-                {/* PIN設定 */}
-                <PinSettings parentId={user.id} />
 
                 {/* 子どもの一覧 */}
                 <div style={styles.dashSection}>
