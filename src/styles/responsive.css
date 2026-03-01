@@ -1,5 +1,13 @@
 /* レスポンシブ対応 — インラインスタイルで書けないメディアクエリをここで管理 */
 
+/* 親タブのスクロール: -webkit-overflow-scrolling はCSS Moduleで書けないためここで設定 */
+.parent-tabs {
+  -webkit-overflow-scrolling: touch;
+}
+.parent-tabs::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 480px) {
   /* アイコン選択グリッド: 8列 → 6列 */
   .icon-grid {
@@ -16,9 +24,22 @@
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
-  /* 親モードのタブ: 文字を小さくして収める */
-  .parent-tabs .tab-item {
-    font-size: 0.78rem !important;
-    padding: 0.5rem 0.4rem !important;
+  /* タスクフォームの2列レイアウト: 1列にスタック */
+  .task-form-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 380px) {
+  /* ミッションカードのアイコンを小さくして本文エリアを確保 */
+  .mission-icon {
+    font-size: 2.2rem !important;
+  }
+
+  /* 「できた！」ボタンの横パディングを縮小 */
+  .mission-complete-btn {
+    padding: 0 0.75rem !important;
+    height: 48px !important;
+    font-size: 1rem !important;
   }
 }

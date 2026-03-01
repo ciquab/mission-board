@@ -77,7 +77,7 @@ export default function MissionCard({ task, completed, onComplete, completing })
 
   return (
     <div style={styles.card(completed)}>
-      <div style={styles.icon}>{task.icon || '⭐'}</div>
+      <div style={styles.icon} className="mission-icon">{task.icon || '⭐'}</div>
       <div style={styles.body}>
         <div style={styles.title}>{task.title}</div>
         <span style={styles.pointBadge}>⭐ +{task.point_value || 0}pt</span>
@@ -90,6 +90,7 @@ export default function MissionCard({ task, completed, onComplete, completing })
       ) : (
         <button
           style={{ ...styles.completeBtn, opacity: completing ? 0.7 : 1 }}
+          className="mission-complete-btn"
           onClick={handleClick}
           disabled={completing}
         >

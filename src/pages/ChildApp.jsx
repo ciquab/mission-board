@@ -94,6 +94,9 @@ const styles = {
     fontSize: '1.7rem',
     fontWeight: 'bold',
     letterSpacing: '-0.5px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   headerRight: {
     display: 'flex',
@@ -466,15 +469,26 @@ export default function ChildApp() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // 全ミッション完了時に連続紙吹雪（ローディング後の遷移のみ発火）
-  const prevAllDoneRef = useRef(null)
+  // 紙吹雪を発火済みの時間帯をRefで追跡（当日のみ、localStorageで保存）
+  const firedConfettiRef = useRef(null)
+  if (firedConfettiRef.current === null) {
+    const key = `confetti_${getToday()}`
+    try {
+      firedConfettiRef.current = new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+    } catch {
+      firedConfettiRef.current = new Set()
+    }
+  }
+
+  // 全ミッション完了時に連続紙吹雪（時間帯ごとに初回のみ発火）
   useEffect(() => {
     if (loading) return
-    if (allDone && prevAllDoneRef.current === false) {
+    if (allDone && !firedConfettiRef.current.has(activeTimeBlock)) {
       fireAllDoneConfetti()
+      firedConfettiRef.current.add(activeTimeBlock)
+      localStorage.setItem(`confetti_${getToday()}`, JSON.stringify([...firedConfettiRef.current]))
     }
-    prevAllDoneRef.current = allDone
-  }, [allDone, loading])
+  }, [allDone, loading, activeTimeBlock])
 
   async function handleComplete(taskId, pointValue) {
     setCompleting(taskId)
@@ -559,7 +573,7 @@ export default function ChildApp() {
       {/* ヘッダー */}
       <header style={styles.header}>
         <div style={styles.headerTop}>
-          <div>
+          <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', marginRight: '0.5rem' }}>
             <div style={styles.greeting}>やあ、</div>
             <div style={styles.userName}>{user.name}！</div>
           </div>
