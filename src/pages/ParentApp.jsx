@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import {
   getTasks,
@@ -226,14 +226,84 @@ const styles = {
     lineHeight: 1.7,
     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
   },
-  // 履歴タブ用スタイル
-  historySelector: {
+  // 絞り込み・ソートUI
+  filterBar: {
+    marginBottom: '0.85rem',
+  },
+  searchWrap: {
+    position: 'relative',
+    marginBottom: '0.5rem',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: '0.7rem',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    fontSize: '0.9rem',
+    color: '#aaa',
+    pointerEvents: 'none',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '0.6rem 0.85rem 0.6rem 2.2rem',
+    border: '1.5px solid #ddd',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    boxSizing: 'border-box',
+    background: '#fff',
+    outline: 'none',
+  },
+  filterRow: {
+    display: 'flex',
+    gap: '0.4rem',
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    paddingBottom: '0.2rem',
+    marginBottom: '0.4rem',
+  },
+  filterChip: (active) => ({
+    padding: '0.35rem 0.75rem',
+    borderRadius: '999px',
+    border: active ? 'none' : '1px solid #ddd',
+    background: active ? '#2E75B6' : '#fff',
+    color: active ? '#fff' : '#666',
+    fontSize: '0.82rem',
+    fontWeight: active ? 'bold' : 'normal',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+    minHeight: 'auto',
+  }),
+  filterFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginBottom: '0.4rem',
+  },
+  sortSelect: {
+    padding: '0.38rem 0.6rem',
+    border: '1.5px solid #ddd',
+    borderRadius: '8px',
+    fontSize: '0.82rem',
+    background: '#fff',
+    color: '#444',
+    cursor: 'pointer',
+    minHeight: 'auto',
+  },
+  resultCount: {
+    fontSize: '0.75rem',
+    color: '#bbb',
+    textAlign: 'right',
+    marginBottom: '0.5rem',
+  },
+  // 履歴タブ
+  childSelectorRow: {
     display: 'flex',
     gap: '0.5rem',
-    marginBottom: '1rem',
     flexWrap: 'wrap',
+    marginBottom: '0.85rem',
   },
-  historySelectorBtn: (active) => ({
+  childSelectorBtn: (active) => ({
     padding: '0.45rem 0.85rem',
     borderRadius: '999px',
     border: active ? 'none' : '1px solid #ddd',
@@ -244,6 +314,27 @@ const styles = {
     cursor: 'pointer',
     minHeight: 'auto',
   }),
+  pointsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    marginBottom: '0.85rem',
+    padding: '0.85rem 1rem',
+    background: '#fff',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+  },
+  pointsBadge: {
+    background: 'linear-gradient(135deg, #FFD700, #FFA000)',
+    color: '#5D4037',
+    borderRadius: '999px',
+    padding: '0.2rem 0.7rem',
+    fontSize: '0.85rem',
+    fontWeight: 'bold',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.2rem',
+  },
   historyCard: {
     background: '#fff',
     borderRadius: '12px',
@@ -253,10 +344,6 @@ const styles = {
     alignItems: 'center',
     gap: '0.75rem',
     marginBottom: '0.6rem',
-  },
-  historyIcon: {
-    fontSize: '1.4rem',
-    flexShrink: 0,
   },
   historyBody: {
     flex: 1,
@@ -280,20 +367,9 @@ const styles = {
     fontWeight: 'bold',
     color: pts >= 0 ? '#4CAF50' : '#F44336',
     flexShrink: 0,
-    minWidth: '2.5rem',
+    minWidth: '3rem',
     textAlign: 'right',
   }),
-  pointsBadge: {
-    background: 'linear-gradient(135deg, #FFD700, #FFA000)',
-    color: '#5D4037',
-    borderRadius: '999px',
-    padding: '0.2rem 0.6rem',
-    fontSize: '0.82rem',
-    fontWeight: 'bold',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.2rem',
-  },
 }
 
 export default function ParentApp() {
@@ -314,11 +390,20 @@ export default function ParentApp() {
   const [linkStatus, setLinkStatus] = useState('') // 'success' | 'error' | ''
   const [linkMessage, setLinkMessage] = useState('')
   const [linking, setLinking] = useState(false)
-  // 履歴タブ用
-  const [childPoints, setChildPoints] = useState({}) // { [childId]: number }
-  const [childLogs, setChildLogs] = useState({})     // { [childId]: log[] }
+  // タスク管理タブ 絞り込み・ソート
+  const [taskSearch, setTaskSearch] = useState('')
+  const [taskFilterChild, setTaskFilterChild] = useState('')
+  const [taskFilterTimeBlock, setTaskFilterTimeBlock] = useState('')
+  const [taskFilterType, setTaskFilterType] = useState('')
+  const [taskSort, setTaskSort] = useState('')
+  // 履歴タブ
+  const [childPoints, setChildPoints] = useState({})
+  const [childLogs, setChildLogs] = useState({})
   const [historyChildId, setHistoryChildId] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [histSearch, setHistSearch] = useState('')
+  const [histPeriod, setHistPeriod] = useState('all')
+  const [histSort, setHistSort] = useState('date_desc')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -332,7 +417,6 @@ export default function ParentApp() {
       setTasks(allTasks.filter(t => t.status === 'active'))
       setChildren(childList)
       setRewardRequests(rewardReqs)
-
       // 各子どものポイントをまとめて取得
       if (childList.length > 0) {
         const pointsArr = await Promise.all(childList.map(c => getUserPoints(c.user_id)))
@@ -367,6 +451,67 @@ export default function ParentApp() {
     const proposalCount = proposals.filter(t => t.created_by === childId).length
     return { taskCount, proposalCount }
   }
+
+  // タスク管理タブ：絞り込み・ソートを適用
+  const filteredTasks = useMemo(() => {
+    let list = activeTasks
+    if (taskFilterChild) list = list.filter(t => t.assigned_to === taskFilterChild)
+    if (taskFilterTimeBlock) list = list.filter(t => t.time_block === taskFilterTimeBlock)
+    if (taskFilterType) list = list.filter(t => t.type === taskFilterType)
+    if (taskSearch.trim()) {
+      const q = taskSearch.trim().toLowerCase()
+      list = list.filter(t =>
+        t.title.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q)
+      )
+    }
+    const sorted = [...list]
+    if (taskSort === 'title_asc') sorted.sort((a, b) => a.title.localeCompare(b.title, 'ja'))
+    else if (taskSort === 'timeblock') {
+      const order = { morning: 0, afternoon: 1, evening: 2, night: 3, bedtime: 4 }
+      sorted.sort((a, b) => (order[a.time_block] ?? 99) - (order[b.time_block] ?? 99))
+    }
+    else if (taskSort === 'points_desc') sorted.sort((a, b) => Number(b.point_value) - Number(a.point_value))
+    else if (taskSort === 'points_asc') sorted.sort((a, b) => Number(a.point_value) - Number(b.point_value))
+    return sorted
+  }, [activeTasks, taskSearch, taskFilterChild, taskFilterTimeBlock, taskFilterType, taskSort])
+
+  // 子どもを選択して完了ログを読み込む
+  async function handleSelectHistoryChild(childId) {
+    setHistoryChildId(childId)
+    if (childLogs[childId]) return // キャッシュ済み
+    setHistoryLoading(true)
+    try {
+      const logs = await getTaskLogsWithDetails(childId)
+      setChildLogs(prev => ({ ...prev, [childId]: logs }))
+    } catch (e) {
+      setError('履歴の読み込みに失敗しました。' + e.message)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  // 履歴タブ：絞り込み・ソートを適用
+  const currentLogs = historyChildId ? (childLogs[historyChildId] || []) : []
+  const filteredLogs = useMemo(() => {
+    let list = currentLogs
+    if (histSearch.trim()) {
+      const q = histSearch.trim().toLowerCase()
+      list = list.filter(l => l.title.toLowerCase().includes(q))
+    }
+    if (histPeriod !== 'all') {
+      const now = new Date()
+      const cutoff = new Date(now)
+      if (histPeriod === 'today') cutoff.setHours(0, 0, 0, 0)
+      else if (histPeriod === 'week') cutoff.setDate(now.getDate() - 7)
+      else if (histPeriod === 'month') cutoff.setDate(now.getDate() - 30)
+      list = list.filter(l => l.completed_at && new Date(l.completed_at) >= cutoff)
+    }
+    const sorted = [...list]
+    if (histSort === 'date_asc') sorted.sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at))
+    else if (histSort === 'points_desc') sorted.sort((a, b) => b.points_earned - a.points_earned)
+    return sorted
+  }, [currentLogs, histSearch, histPeriod, histSort])
 
   async function handleCreateTask(form) {
     setSubmitting(true)
@@ -538,7 +683,6 @@ export default function ParentApp() {
           style={styles.tab(tab === TAB_HISTORY)}
           onClick={() => {
             setTab(TAB_HISTORY)
-            // 子どもが1人以上いれば最初を自動選択
             if (children.length > 0 && !historyChildId) {
               handleSelectHistoryChild(children[0].user_id)
             }
@@ -639,6 +783,63 @@ export default function ParentApp() {
               ＋ 新しいタスクを作成
             </button>
 
+            {/* 絞り込み・ソートバー */}
+            {!loading && activeTasks.length > 0 && (
+              <div style={styles.filterBar}>
+                {/* キーワード検索 */}
+                <div style={styles.searchWrap}>
+                  <span style={styles.searchIcon}>🔍</span>
+                  <input
+                    type="text"
+                    placeholder="タイトル・説明で検索…"
+                    value={taskSearch}
+                    onChange={e => setTaskSearch(e.target.value)}
+                    style={styles.searchInput}
+                  />
+                </div>
+                {/* 担当フィルター */}
+                {children.length > 0 && (
+                  <div style={styles.filterRow}>
+                    <button style={styles.filterChip(!taskFilterChild)} onClick={() => setTaskFilterChild('')}>全員</button>
+                    {children.map(c => (
+                      <button
+                        key={c.user_id}
+                        style={styles.filterChip(taskFilterChild === c.user_id)}
+                        onClick={() => setTaskFilterChild(taskFilterChild === c.user_id ? '' : c.user_id)}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* 時間帯フィルター */}
+                <div style={styles.filterRow}>
+                  {[['', 'すべて'], ['morning', '🌅朝'], ['afternoon', '☀️昼'], ['evening', '🌇夕方'], ['night', '🌙夜'], ['bedtime', '🛏就寝前']].map(([val, label]) => (
+                    <button key={val} style={styles.filterChip(taskFilterTimeBlock === val)} onClick={() => setTaskFilterTimeBlock(val)}>{label}</button>
+                  ))}
+                </div>
+                {/* タイプ + ソート */}
+                <div style={styles.filterFooter}>
+                  <div style={styles.filterRow}>
+                    {[['', 'すべて'], ['routine', 'ルーティン'], ['spot', 'スポット']].map(([val, label]) => (
+                      <button key={val} style={styles.filterChip(taskFilterType === val)} onClick={() => setTaskFilterType(val)}>{label}</button>
+                    ))}
+                  </div>
+                  <div style={{ flex: 1 }} />
+                  <select value={taskSort} onChange={e => setTaskSort(e.target.value)} style={styles.sortSelect}>
+                    <option value="">並び順</option>
+                    <option value="title_asc">タイトル順</option>
+                    <option value="timeblock">時間帯順</option>
+                    <option value="points_desc">ポイント高順</option>
+                    <option value="points_asc">ポイント低順</option>
+                  </select>
+                </div>
+                {filteredTasks.length !== activeTasks.length && (
+                  <div style={styles.resultCount}>{filteredTasks.length} / {activeTasks.length} 件</div>
+                )}
+              </div>
+            )}
+
             {loading ? (
               <div style={styles.loading}>よみこみちゅう…</div>
             ) : activeTasks.length === 0 ? (
@@ -646,9 +847,14 @@ export default function ParentApp() {
                 タスクがまだありません。<br />
                 「新しいタスクを作成」で追加しましょう。
               </div>
+            ) : filteredTasks.length === 0 ? (
+              <div style={styles.empty}>
+                条件に一致するタスクがありません。<br />
+                絞り込みを変更してみてください。
+              </div>
             ) : (
               <div style={styles.taskList}>
-                {activeTasks.map(task => (
+                {filteredTasks.map(task => (
                   <TaskCard
                     key={task.task_id}
                     task={task}
@@ -705,11 +911,11 @@ export default function ParentApp() {
             ) : (
               <>
                 {/* 子ども選択 */}
-                <div style={styles.historySelector}>
+                <div style={styles.childSelectorRow}>
                   {children.map(child => (
                     <button
                       key={child.user_id}
-                      style={styles.historySelectorBtn(historyChildId === child.user_id)}
+                      style={styles.childSelectorBtn(historyChildId === child.user_id)}
                       onClick={() => handleSelectHistoryChild(child.user_id)}
                     >
                       {child.name}
@@ -717,42 +923,79 @@ export default function ParentApp() {
                   ))}
                 </div>
 
-                {/* 選択中の子どものポイント合計 */}
                 {historyChildId && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', padding: '0.85rem 1rem', background: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-                    <span style={{ fontSize: '1.3rem' }}>🏆</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: '0.2rem' }}>現在の保有ポイント</div>
-                      <span style={styles.pointsBadge}>
-                        ⭐ {childPoints[historyChildId] ?? '…'} pt
-                      </span>
+                  <>
+                    {/* 現在ポイント */}
+                    <div style={styles.pointsRow}>
+                      <span style={{ fontSize: '1.3rem' }}>🏆</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.25rem' }}>現在の保有ポイント</div>
+                        <span style={styles.pointsBadge}>⭐ {childPoints[historyChildId] ?? '…'} pt</span>
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {/* 完了ログ一覧 */}
-                {historyLoading ? (
-                  <div style={styles.loading}>よみこみちゅう…</div>
-                ) : historyChildId && (childLogs[historyChildId] || []).length === 0 ? (
-                  <div style={styles.empty}>完了したタスクはまだありません。</div>
-                ) : historyChildId ? (
-                  (childLogs[historyChildId] || []).map(log => (
-                    <div key={log.log_id} style={styles.historyCard}>
-                      <span style={styles.historyIcon}>✅</span>
-                      <div style={styles.historyBody}>
-                        <div style={styles.historyTitle}>{log.title}</div>
-                        <div style={styles.historyDate}>
-                          {log.completed_at
-                            ? new Date(log.completed_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                            : '日時不明'}
+                    {/* 絞り込み・ソートバー */}
+                    {!historyLoading && currentLogs.length > 0 && (
+                      <div style={styles.filterBar}>
+                        <div style={styles.searchWrap}>
+                          <span style={styles.searchIcon}>🔍</span>
+                          <input
+                            type="text"
+                            placeholder="タスク名で検索…"
+                            value={histSearch}
+                            onChange={e => setHistSearch(e.target.value)}
+                            style={styles.searchInput}
+                          />
                         </div>
+                        <div style={styles.filterFooter}>
+                          <div style={styles.filterRow}>
+                            {[['all', '全期間'], ['today', '今日'], ['week', '7日'], ['month', '30日']].map(([val, label]) => (
+                              <button key={val} style={styles.filterChip(histPeriod === val)} onClick={() => setHistPeriod(val)}>{label}</button>
+                            ))}
+                          </div>
+                          <div style={{ flex: 1 }} />
+                          <select value={histSort} onChange={e => setHistSort(e.target.value)} style={styles.sortSelect}>
+                            <option value="date_desc">新しい順</option>
+                            <option value="date_asc">古い順</option>
+                            <option value="points_desc">ポイント高順</option>
+                          </select>
+                        </div>
+                        {filteredLogs.length !== currentLogs.length && (
+                          <div style={styles.resultCount}>{filteredLogs.length} / {currentLogs.length} 件</div>
+                        )}
                       </div>
-                      <div style={styles.historyPoints(log.points_earned)}>
-                        {log.points_earned >= 0 ? '+' : ''}{log.points_earned} pt
+                    )}
+
+                    {/* 完了ログ一覧 */}
+                    {historyLoading ? (
+                      <div style={styles.loading}>よみこみちゅう…</div>
+                    ) : currentLogs.length === 0 ? (
+                      <div style={styles.empty}>完了したタスクはまだありません。</div>
+                    ) : filteredLogs.length === 0 ? (
+                      <div style={styles.empty}>
+                        条件に一致する履歴がありません。<br />
+                        絞り込みを変更してみてください。
                       </div>
-                    </div>
-                  ))
-                ) : null}
+                    ) : (
+                      filteredLogs.map(log => (
+                        <div key={log.log_id} style={styles.historyCard}>
+                          <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>✅</span>
+                          <div style={styles.historyBody}>
+                            <div style={styles.historyTitle}>{log.title}</div>
+                            <div style={styles.historyDate}>
+                              {log.completed_at
+                                ? new Date(log.completed_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                : '日時不明'}
+                            </div>
+                          </div>
+                          <div style={styles.historyPoints(log.points_earned)}>
+                            {log.points_earned >= 0 ? '+' : ''}{log.points_earned} pt
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </>
+                )}
               </>
             )}
           </>
