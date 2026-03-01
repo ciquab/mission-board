@@ -64,10 +64,23 @@ const styles = {
     marginTop: '1rem',
     lineHeight: 1.5,
   },
+  errorBox: {
+    background: '#fff3f3',
+    border: '1.5px solid #e74c3c',
+    borderRadius: '8px',
+    padding: '0.85rem 1rem',
+    marginTop: '1rem',
+    fontSize: '0.82rem',
+    color: '#c0392b',
+    textAlign: 'left',
+    lineHeight: 1.6,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+  },
 }
 
 export default function LoginPage() {
-  const { signIn } = useAuth()
+  const { signIn, authError } = useAuth()
 
   return (
     <div style={styles.container}>
@@ -88,6 +101,11 @@ export default function LoginPage() {
           Googleアカウントを使ってログインします。<br />
           初回ログイン時はロールの設定が必要です。
         </p>
+        {authError && (
+          <div style={styles.errorBox}>
+            ⚠️ {authError}
+          </div>
+        )}
       </div>
     </div>
   )

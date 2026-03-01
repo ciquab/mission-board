@@ -14,6 +14,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tokenClient, setTokenClient] = useState(null)
+  const [authError, setAuthError] = useState(null)
   // 新規ユーザーのロール設定が未完了の場合に使用
   const [pendingProfile, setPendingProfile] = useState(null)
 
@@ -52,8 +53,20 @@ export function AuthProvider({ children }) {
   async function handleTokenResponse(tokenResponse) {
     if (tokenResponse.error) {
       console.error('OAuth2エラー:', tokenResponse.error)
+      // redirect_uri_mismatch はオリジン未登録が原因
+      if (tokenResponse.error === 'redirect_uri_mismatch') {
+        setAuthError(
+          'このサイトのURLがGoogleに登録されていません。\n' +
+          'Google Cloud ConsoleのOAuthクライアントに\n' +
+          `"${window.location.origin}" を\n` +
+          '「承認済みのJavaScript生成元」として追加してください。'
+        )
+      } else {
+        setAuthError(`ログインに失敗しました (${tokenResponse.error})。もう一度お試しください。`)
+      }
       return
     }
+    setAuthError(null)
 
     const token = tokenResponse.access_token
     setAccessToken(token)
@@ -127,6 +140,7 @@ export function AuthProvider({ children }) {
   }
 
   function signIn() {
+    setAuthError(null)
     tokenClient?.requestAccessToken()
   }
 
@@ -157,6 +171,7 @@ export function AuthProvider({ children }) {
       switchRole,
       pendingProfile,
       completeRegistration,
+      authError,
     }}>
       {children}
     </AuthContext.Provider>
