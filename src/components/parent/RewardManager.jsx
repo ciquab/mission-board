@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   getAllRewardsByParent,
   createReward,
+  updateReward,
   updateRewardStatus,
   archiveReward,
 } from '../../api/sheets'
@@ -107,6 +108,16 @@ const styles = {
     border: '1px solid #F44336',
     borderRadius: '6px',
     fontSize: '0.82rem',
+    cursor: 'pointer',
+    minHeight: 'auto',
+  },
+  editBtn: {
+    padding: '0.45rem 0.75rem',
+    background: '#fff',
+    color: '#2E75B6',
+    border: '1px solid #2E75B6',
+    borderRadius: '6px',
+    fontSize: '0.78rem',
     cursor: 'pointer',
     minHeight: 'auto',
   },
@@ -231,6 +242,7 @@ export default function RewardManager({ parentId, children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [editingReward, setEditingReward] = useState(null) // 編集中のご褒美
   const [submitting, setSubmitting] = useState(false)
   const [processing, setProcessing] = useState(null)
 
@@ -257,6 +269,7 @@ export default function RewardManager({ parentId, children }) {
   useEffect(() => { loadRewards() }, [loadRewards])
 
   function openForm() {
+    setEditingReward(null)
     setForm({
       title: '',
       point_cost: '10',
@@ -265,17 +278,32 @@ export default function RewardManager({ parentId, children }) {
     setShowForm(true)
   }
 
-  async function handleCreate(e) {
+  function openEditForm(reward) {
+    setEditingReward(reward)
+    setForm({
+      title: reward.title,
+      point_cost: String(reward.point_cost),
+      assigned_to: reward.assigned_to,
+    })
+    setShowForm(true)
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
     setSubmitting(true)
     setError('')
     try {
-      await createReward(form.title.trim(), Number(form.point_cost), parentId, form.assigned_to)
+      if (editingReward) {
+        await updateReward(editingReward.reward_id, form.title.trim(), Number(form.point_cost))
+      } else {
+        await createReward(form.title.trim(), Number(form.point_cost), parentId, form.assigned_to)
+      }
       setShowForm(false)
+      setEditingReward(null)
       await loadRewards()
     } catch (e) {
-      setError('ご褒美の作成に失敗しました。' + e.message)
+      setError((editingReward ? '編集' : '作成') + 'に失敗しました。' + e.message)
     } finally {
       setSubmitting(false)
     }
@@ -399,9 +427,14 @@ export default function RewardManager({ parentId, children }) {
                           <span>{getChildName(r.assigned_to)}</span>
                         </div>
                       </div>
-                      <button style={styles.deleteBtn} onClick={() => handleDelete(r.reward_id)}>
-                        削除
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button style={styles.editBtn} onClick={() => openEditForm(r)}>
+                          ✏️ 編集
+                        </button>
+                        <button style={styles.deleteBtn} onClick={() => handleDelete(r.reward_id)}>
+                          削除
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -445,8 +478,8 @@ export default function RewardManager({ parentId, children }) {
       {showForm && (
         <div style={styles.overlay} onClick={(e) => e.target === e.currentTarget && setShowForm(false)}>
           <div style={styles.modal}>
-            <div style={styles.modalTitle}>🎁 ご褒美を追加</div>
-            <form onSubmit={handleCreate}>
+            <div style={styles.modalTitle}>{editingReward ? '🎁 ご褒美を編集' : '🎁 ご褒美を追加'}</div>
+            <form onSubmit={handleSubmit}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>ご褒美の名前</label>
                 <input
@@ -475,9 +508,10 @@ export default function RewardManager({ parentId, children }) {
                 <div style={{ ...styles.formGroup, flex: 1 }}>
                   <label style={styles.label}>対象の子ども</label>
                   <select
-                    style={styles.select}
+                    style={{ ...styles.select, opacity: editingReward ? 0.6 : 1 }}
                     value={form.assigned_to}
                     onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
+                    disabled={!!editingReward}
                     required
                   >
                     {children.map(c => (
@@ -488,9 +522,9 @@ export default function RewardManager({ parentId, children }) {
               </div>
 
               <button type="submit" style={styles.submitBtn} disabled={submitting}>
-                {submitting ? '保存中…' : '追加する'}
+                {submitting ? '保存中…' : editingReward ? '保存する' : '追加する'}
               </button>
-              <button type="button" style={styles.cancelBtn} onClick={() => setShowForm(false)}>
+              <button type="button" style={styles.cancelBtn} onClick={() => { setShowForm(false); setEditingReward(null) }}>
                 キャンセル
               </button>
             </form>

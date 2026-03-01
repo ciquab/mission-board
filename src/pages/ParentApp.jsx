@@ -8,6 +8,7 @@ import {
   updateTaskApproval,
   getChildren,
   getRewardRequests,
+  addParentToChild,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
@@ -15,6 +16,7 @@ import TaskCard from '../components/parent/TaskCard'
 import ProposalCard from '../components/parent/ProposalCard'
 import ChildProgressCard from '../components/parent/ChildProgressCard'
 import RewardManager from '../components/parent/RewardManager'
+import NotificationScheduleModal from '../components/NotificationScheduleModal'
 
 const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
@@ -224,6 +226,12 @@ export default function ParentApp() {
   const [editingTask, setEditingTask] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [rewardRequests, setRewardRequests] = useState([])
+  const [showNotifInfo, setShowNotifInfo] = useState(false)
+  const [showLinkChild, setShowLinkChild] = useState(false)
+  const [linkEmail, setLinkEmail] = useState('')
+  const [linkStatus, setLinkStatus] = useState('') // 'success' | 'error' | ''
+  const [linkMessage, setLinkMessage] = useState('')
+  const [linking, setLinking] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -335,6 +343,26 @@ export default function ParentApp() {
     }
   }
 
+  async function handleLinkChild(e) {
+    e.preventDefault()
+    if (!linkEmail.trim()) return
+    setLinking(true)
+    setLinkStatus('')
+    setLinkMessage('')
+    try {
+      await addParentToChild(linkEmail.trim(), user.id)
+      setLinkStatus('success')
+      setLinkMessage('リンクしました！ダッシュボードに子どもが表示されます。')
+      setLinkEmail('')
+      await loadData()
+    } catch (err) {
+      setLinkStatus('error')
+      setLinkMessage(err.message)
+    } finally {
+      setLinking(false)
+    }
+  }
+
   return (
     <div style={styles.container}>
       {/* ヘッダー */}
@@ -351,14 +379,23 @@ export default function ParentApp() {
         <div style={styles.headerRight}>
           {/* 通知トグルボタン（denied の場合は非表示） */}
           {notifSupported && permission !== 'denied' && (
-            <button
-              style={styles.switchBtn}
-              onClick={notifEnabled ? disableNotif : enableNotif}
-              disabled={notifLoading}
-              title={notifEnabled ? '通知をオフにする' : '通知をオンにする'}
-            >
-              {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
-            </button>
+            <>
+              <button
+                style={styles.switchBtn}
+                onClick={notifEnabled ? disableNotif : enableNotif}
+                disabled={notifLoading}
+                title={notifEnabled ? '通知をオフにする' : '通知をオンにする'}
+              >
+                {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
+              </button>
+              <button
+                style={{ ...styles.switchBtn, padding: '0.4rem 0.6rem' }}
+                onClick={() => setShowNotifInfo(true)}
+                title="通知スケジュールを確認"
+              >
+                ℹ️
+              </button>
+            </>
           )}
           <button style={styles.signOutBtn} onClick={signOut}>
             ログアウト
@@ -419,7 +456,15 @@ export default function ParentApp() {
 
                 {/* 子どもの一覧 */}
                 <div style={styles.dashSection}>
-                  <div style={styles.dashSectionTitle}>子どもの状況</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <div style={styles.dashSectionTitle}>子どもの状況</div>
+                    <button
+                      style={{ padding: '0.35rem 0.75rem', background: '#fff', color: '#2E75B6', border: '1px solid #2E75B6', borderRadius: '6px', fontSize: '0.78rem', cursor: 'pointer', minHeight: 'auto' }}
+                      onClick={() => { setShowLinkChild(true); setLinkStatus(''); setLinkMessage('') }}
+                    >
+                      ＋ 子どもをリンク
+                    </button>
+                  </div>
                   {children.length === 0 ? (
                     <div style={styles.noChildMsg}>
                       子どものアカウントがまだ登録されていません。<br />
@@ -545,6 +590,51 @@ export default function ParentApp() {
           onClose={() => setEditingTask(null)}
           submitting={submitting}
         />
+      )}
+
+      {/* 通知スケジュールモーダル */}
+      {showNotifInfo && (
+        <NotificationScheduleModal onClose={() => setShowNotifInfo(false)} />
+      )}
+
+      {/* 子どもリンクモーダル */}
+      {showLinkChild && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={e => e.target === e.currentTarget && setShowLinkChild(false)}
+        >
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '400px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#333' }}>👶 子どもをリンク</div>
+              <button onClick={() => setShowLinkChild(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#999', minHeight: 'auto' }}>✕</button>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem', lineHeight: 1.6 }}>
+              子どものGoogleアカウントのメールアドレスを入力してください。子どもが先にログイン済みである必要があります。
+            </p>
+            <form onSubmit={handleLinkChild}>
+              <input
+                type="email"
+                value={linkEmail}
+                onChange={e => { setLinkEmail(e.target.value); setLinkStatus('') }}
+                placeholder="child@example.com"
+                required
+                style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+              />
+              {linkMessage && (
+                <div style={{ padding: '0.6rem 0.85rem', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '0.75rem', background: linkStatus === 'success' ? '#E8F5E9' : '#FEEBEE', color: linkStatus === 'success' ? '#2E7D32' : '#C62828' }}>
+                  {linkStatus === 'success' ? '✅ ' : '❌ '}{linkMessage}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={linking}
+                style={{ width: '100%', padding: '0.85rem', background: '#2E75B6', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem' }}
+              >
+                {linking ? 'リンク中…' : 'リンクする'}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

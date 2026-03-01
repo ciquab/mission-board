@@ -267,10 +267,27 @@ export async function updateUser(userId, updates) {
   return updated
 }
 
-/** 親IDに紐づく子どもを取得 */
+/** 親IDに紐づく子どもを取得（parent_id はカンマ区切りで複数親対応） */
 export async function getChildren(parentId) {
   const rows = await getRows(SHEETS.USERS, 'A2:G')
-  return rows.filter(r => r[4] === parentId).map(rowToUser)
+  return rows.filter(r => (r[4] || '').split(',').includes(parentId)).map(rowToUser)
+}
+
+/** 子どもに親を追加リンク（複数親対応） */
+export async function addParentToChild(childEmail, newParentId) {
+  const rows = await getRows(SHEETS.USERS, 'A2:G')
+  const rowIndex = rows.findIndex(
+    r => (r[3] || '').trim().toLowerCase() === childEmail.trim().toLowerCase() && r[2] === 'child'
+  )
+  if (rowIndex === -1) throw new Error('こどものアカウントが見つかりません')
+
+  const currentParents = (rows[rowIndex][4] || '').split(',').filter(Boolean)
+  if (currentParents.includes(newParentId)) throw new Error('すでにリンク済みです')
+
+  currentParents.push(newParentId)
+  const updated = [...rows[rowIndex]]
+  updated[4] = currentParents.join(',')
+  await updateRow(SHEETS.USERS, rowIndex + 2, updated)
 }
 
 /** FCM トークンを users シートの push_endpoint カラムに保存する */
@@ -491,6 +508,18 @@ export async function updateRewardStatus(rewardId, status) {
 
   const updated = [...rows[rowIndex]]
   updated[5] = status
+  await updateRow(SHEETS.REWARDS, rowIndex + 2, updated)
+}
+
+/** 親がご褒美のタイトル・ポイントを編集 */
+export async function updateReward(rewardId, title, pointCost) {
+  const rows = await getRows(SHEETS.REWARDS, 'A2:F')
+  const rowIndex = rows.findIndex(r => r[0] === rewardId)
+  if (rowIndex === -1) throw new Error('ご褒美が見つかりません')
+
+  const updated = [...rows[rowIndex]]
+  updated[1] = title
+  updated[2] = String(pointCost)
   await updateRow(SHEETS.REWARDS, rowIndex + 2, updated)
 }
 

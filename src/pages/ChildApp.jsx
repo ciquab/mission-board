@@ -15,6 +15,7 @@ import MissionCard from '../components/child/MissionCard'
 import ProposalForm from '../components/child/ProposalForm'
 import BadgePanel from '../components/child/BadgePanel'
 import RewardShop from '../components/child/RewardShop'
+import NotificationScheduleModal from '../components/NotificationScheduleModal'
 import { fireAllDoneConfetti } from '../utils/confetti'
 import { getBadgeDef } from '../utils/badges'
 
@@ -390,7 +391,7 @@ export default function ChildApp() {
   // 新バッジ取得モーダル
   const [newBadges, setNewBadges] = useState([])  // 取得した badge_type 配列
   const [badgeModalIdx, setBadgeModalIdx] = useState(0)
-  // おやモード切り替えPINモーダル
+  const [showNotifInfo, setShowNotifInfo] = useState(false)
 
   // ローカルで完了済みを管理（当日のみ）
   const [completedIds, setCompletedIds] = useState(() => {
@@ -558,14 +559,23 @@ export default function ChildApp() {
             </div>
             {/* 通知トグルボタン（denied の場合は非表示） */}
             {notifSupported && permission !== 'denied' && (
-              <button
-                style={styles.switchBtn}
-                onClick={notifEnabled ? disableNotif : enableNotif}
-                disabled={notifLoading}
-                title={notifEnabled ? 'つうちをオフ' : 'つうちをオン'}
-              >
-                {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
-              </button>
+              <>
+                <button
+                  style={styles.switchBtn}
+                  onClick={notifEnabled ? disableNotif : enableNotif}
+                  disabled={notifLoading}
+                  title={notifEnabled ? 'つうちをオフ' : 'つうちをオン'}
+                >
+                  {notifLoading ? '…' : notifEnabled ? '🔔' : '🔕'}
+                </button>
+                <button
+                  style={{ ...styles.switchBtn, padding: '0.4rem 0.6rem' }}
+                  onClick={() => setShowNotifInfo(true)}
+                  title="つうちのじかんをかくにん"
+                >
+                  ℹ️
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -762,6 +772,11 @@ export default function ChildApp() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* 通知スケジュールモーダル */}
+      {showNotifInfo && (
+        <NotificationScheduleModal onClose={() => setShowNotifInfo(false)} />
       )}
     </div>
   )
