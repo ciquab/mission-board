@@ -104,6 +104,23 @@ const styles = {
     minHeight: 'auto',
     whiteSpace: 'nowrap',
   }),
+  typeToggle: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  typeBtn: (selected) => ({
+    flex: 1,
+    padding: '0.6rem',
+    border: `2px solid ${selected ? '#2E75B6' : '#ddd'}`,
+    borderRadius: '10px',
+    background: selected ? '#EBF2FA' : '#fff',
+    color: selected ? '#2E75B6' : '#555',
+    fontWeight: selected ? 'bold' : 'normal',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    minHeight: 'auto',
+    textAlign: 'center',
+  }),
   submitBtn: {
     width: '100%',
     padding: '1rem',
@@ -139,6 +156,7 @@ export default function ProposalForm({ onSubmit, onClose, submitting }) {
   const [description, setDescription] = useState('')
   const [icon, setIcon] = useState('⭐')
   const [timeBlock, setTimeBlock] = useState('morning')
+  const [isRoutine, setIsRoutine] = useState(true)
   const [error, setError] = useState('')
 
   function handleSubmit() {
@@ -147,7 +165,14 @@ export default function ProposalForm({ onSubmit, onClose, submitting }) {
       return
     }
     setError('')
-    onSubmit({ title, description, icon, time_block: timeBlock })
+    onSubmit({
+      title,
+      description,
+      icon,
+      time_block: timeBlock,
+      type: isRoutine ? 'routine' : 'spot',
+      recurrence: isRoutine ? 'daily' : '',
+    })
   }
 
   return (
@@ -180,6 +205,18 @@ export default function ProposalForm({ onSubmit, onClose, submitting }) {
                 {ic}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>まいにちやる？</label>
+          <div style={styles.typeToggle}>
+            <button type="button" style={styles.typeBtn(isRoutine)} onClick={() => setIsRoutine(true)}>
+              🔄 まいにちやる
+            </button>
+            <button type="button" style={styles.typeBtn(!isRoutine)} onClick={() => setIsRoutine(false)}>
+              1️⃣ いちどだけ
+            </button>
           </div>
         </div>
 
