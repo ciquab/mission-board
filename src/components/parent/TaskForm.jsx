@@ -288,7 +288,7 @@ export default function TaskForm({ initialData, children, onSubmit, onClose, sub
           />
         </div>
 
-        <div style={styles.row}>
+        <div style={styles.row} className="task-form-row">
           {/* タスク種別 */}
           <div style={styles.field}>
             <label style={styles.label}>種別</label>
@@ -384,7 +384,7 @@ export default function TaskForm({ initialData, children, onSubmit, onClose, sub
           </select>
         </div>
 
-        <div style={styles.row}>
+        <div style={styles.row} className="task-form-row">
           {/* 担当者 */}
           <div style={styles.field}>
             <label style={styles.label}>担当する子ども</label>
