@@ -170,6 +170,7 @@ export default function RoleSetupPage() {
       await completeRegistration(role, role === 'child' ? parentUser.user_id : '')
     } catch (e) {
       setError('とうろくに失敗しました。もう一度お試しください。')
+    } finally {
       setSubmitting(false)
     }
   }

@@ -87,7 +87,7 @@ async function getRowsPublic(sheetName, range = '') {
  * @param {Array} row - 追加する行データ
  */
 export async function appendRow(sheetName, row) {
-  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&key=${API_KEY}`
+  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
 
   const res = await fetch(url, {
     method: 'POST',
@@ -106,7 +106,7 @@ export async function appendRow(sheetName, row) {
  */
 export async function updateRow(sheetName, rowIndex, row) {
   const range = `${sheetName}!A${rowIndex}`
-  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED&key=${API_KEY}`
+  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`
 
   const res = await fetch(url, {
     method: 'PUT',
