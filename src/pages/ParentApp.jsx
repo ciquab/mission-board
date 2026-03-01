@@ -7,16 +7,20 @@ import {
   archiveTask,
   updateTaskApproval,
   getChildren,
+  getRewardRequests,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
 import TaskCard from '../components/parent/TaskCard'
 import ProposalCard from '../components/parent/ProposalCard'
 import ChildProgressCard from '../components/parent/ChildProgressCard'
+import RewardManager from '../components/parent/RewardManager'
+import PinSettings from '../components/parent/PinSettings'
 
 const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
 const TAB_PROPOSALS = 'proposals'
+const TAB_REWARDS = 'rewards'
 
 const styles = {
   container: {
@@ -220,17 +224,20 @@ export default function ParentApp() {
   const [showForm, setShowForm] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [rewardRequests, setRewardRequests] = useState([])
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [allTasks, childList] = await Promise.all([
+      const [allTasks, childList, rewardReqs] = await Promise.all([
         getTasks(),
         getChildren(user.id),
+        getRewardRequests(user.id),
       ])
       setTasks(allTasks.filter(t => t.status === 'active'))
       setChildren(childList)
+      setRewardRequests(rewardReqs)
     } catch (e) {
       setError('データの読み込みに失敗しました。' + e.message)
     } finally {
@@ -364,17 +371,23 @@ export default function ParentApp() {
       </header>
 
       {/* タブ */}
-      <div style={styles.tabs}>
-        <button style={styles.tab(tab === TAB_DASHBOARD)} onClick={() => setTab(TAB_DASHBOARD)}>
+      <div style={styles.tabs} className="parent-tabs">
+        <button className="tab-item" style={styles.tab(tab === TAB_DASHBOARD)} onClick={() => setTab(TAB_DASHBOARD)}>
           ダッシュボード
         </button>
-        <button style={styles.tab(tab === TAB_TASKS)} onClick={() => setTab(TAB_TASKS)}>
+        <button className="tab-item" style={styles.tab(tab === TAB_TASKS)} onClick={() => setTab(TAB_TASKS)}>
           タスク管理
         </button>
-        <button style={styles.tab(tab === TAB_PROPOSALS)} onClick={() => setTab(TAB_PROPOSALS)}>
+        <button className="tab-item" style={styles.tab(tab === TAB_PROPOSALS)} onClick={() => setTab(TAB_PROPOSALS)}>
           承認待ち
           {proposals.length > 0 && (
             <span style={styles.tabBadge}>{proposals.length}</span>
+          )}
+        </button>
+        <button className="tab-item" style={styles.tab(tab === TAB_REWARDS)} onClick={() => setTab(TAB_REWARDS)}>
+          ご褒美
+          {rewardRequests.length > 0 && (
+            <span style={styles.tabBadge}>{rewardRequests.length}</span>
           )}
         </button>
       </div>
@@ -391,7 +404,7 @@ export default function ParentApp() {
             ) : (
               <>
                 {/* サマリー統計 */}
-                <div style={styles.summaryRow}>
+                <div style={styles.summaryRow} className="summary-row">
                   <div style={styles.summaryCard('#2E75B6')}>
                     <div style={styles.summaryNum('#2E75B6')}>{children.length}</div>
                     <div style={styles.summaryLabel}>こども</div>
@@ -407,6 +420,9 @@ export default function ParentApp() {
                     <div style={styles.summaryLabel}>承認待ち</div>
                   </div>
                 </div>
+
+                {/* PIN設定 */}
+                <PinSettings parentId={user.id} />
 
                 {/* 子どもの一覧 */}
                 <div style={styles.dashSection}>
@@ -509,6 +525,11 @@ export default function ParentApp() {
               </div>
             )}
           </>
+        )}
+
+        {/* ---- ご褒美管理 ---- */}
+        {tab === TAB_REWARDS && (
+          <RewardManager parentId={user.id} children={children} />
         )}
       </div>
 

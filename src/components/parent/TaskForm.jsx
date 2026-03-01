@@ -213,7 +213,7 @@ export default function TaskForm({ initialData, children, onSubmit, onClose, sub
         {/* アイコン */}
         <div style={styles.field}>
           <label style={styles.label}>アイコン</label>
-          <div style={styles.iconGrid}>
+          <div style={styles.iconGrid} className="icon-grid">
             {ICONS.map(icon => (
               <button
                 key={icon}

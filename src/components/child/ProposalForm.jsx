@@ -169,7 +169,7 @@ export default function ProposalForm({ onSubmit, onClose, submitting }) {
 
         <div style={styles.field}>
           <label style={styles.label}>アイコン</label>
-          <div style={styles.iconGrid}>
+          <div style={styles.iconGrid} className="icon-grid">
             {ICONS.map(ic => (
               <button
                 key={ic}

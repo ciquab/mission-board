@@ -1,0 +1,24 @@
+/* レスポンシブ対応 — インラインスタイルで書けないメディアクエリをここで管理 */
+
+@media (max-width: 480px) {
+  /* アイコン選択グリッド: 8列 → 6列 */
+  .icon-grid {
+    grid-template-columns: repeat(6, 1fr) !important;
+  }
+
+  /* バッジグリッド: 4列 → 3列 */
+  .badge-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  /* ダッシュボードサマリー: 3列 → 2列 */
+  .summary-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* 親モードのタブ: 文字を小さくして収める */
+  .parent-tabs .tab-item {
+    font-size: 0.78rem !important;
+    padding: 0.5rem 0.4rem !important;
+  }
+}

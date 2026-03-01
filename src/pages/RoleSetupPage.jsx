@@ -140,17 +140,22 @@ export default function RoleSetupPage() {
   async function searchParent() {
     setParentNotFound(false)
     setParentUser(null)
+    setError('')
     if (!parentEmail.trim()) return
 
     try {
       const found = await getUserByEmail(parentEmail.trim())
       if (found && found.role === 'parent') {
         setParentUser(found)
+      } else if (found) {
+        // ユーザーは見つかったが親ロールではない
+        setParentNotFound(true)
+        setError('そのアカウントはおやモードで登録されていません')
       } else {
         setParentNotFound(true)
       }
-    } catch {
-      setParentNotFound(true)
+    } catch (e) {
+      setError('けんさくに失敗しました: ' + e.message)
     }
   }
 

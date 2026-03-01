@@ -25,8 +25,8 @@ messaging.onBackgroundMessage(payload => {
 
   self.registration.showNotification(title || 'ミッションボード', {
     body: body || 'おしらせがあるよ！',
-    icon: '/mission-board/favicon.svg',
-    badge: '/mission-board/favicon.svg',
+    icon: '/mission-board/icons/icon-192.png',
+    badge: '/mission-board/icons/icon-192.png',
     data: { url: linkUrl },
     // Android 向け振動パターン
     vibrate: [200, 100, 200],

@@ -5,11 +5,19 @@ import {
   createTask,
   logTaskCompletion,
   getUserPoints,
+  getStreak,
+  getBadges,
+  checkAndAwardBadges,
+  getRewards,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import MissionCard from '../components/child/MissionCard'
 import ProposalForm from '../components/child/ProposalForm'
+import BadgePanel from '../components/child/BadgePanel'
+import RewardShop from '../components/child/RewardShop'
+import PinModal from '../components/child/PinModal'
 import { fireAllDoneConfetti } from '../utils/confetti'
+import { getBadgeDef } from '../utils/badges'
 
 const TIME_BLOCKS = [
   { value: 'morning', label: '🌅 あさ' },
@@ -36,6 +44,10 @@ function getToday() {
 
 // 1日の提案上限
 const PROPOSAL_LIMIT = 5
+
+// タブ定義
+const TAB_MISSION = 'mission'
+const TAB_MYPAGE = 'mypage'
 
 const styles = {
   container: {
@@ -76,6 +88,11 @@ const styles = {
     alignItems: 'flex-end',
     gap: '0.4rem',
   },
+  headerStats: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+  },
   pointDisplay: {
     background: '#FFB300',
     color: '#fff',
@@ -87,6 +104,17 @@ const styles = {
     alignItems: 'center',
     gap: '0.25rem',
     boxShadow: '0 2px 8px rgba(255,179,0,0.4)',
+  },
+  streakDisplay: {
+    background: 'rgba(255,255,255,0.2)',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.35rem 0.75rem',
+    fontSize: '0.95rem',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.2rem',
   },
   switchBtn: {
     padding: '0.25rem 0.6rem',
@@ -129,12 +157,33 @@ const styles = {
     transition: 'width 0.6s ease',
     boxShadow: pct >= 100 ? '0 0 8px rgba(255,214,0,0.8)' : 'none',
   }),
+  // ページタブ
+  pageTabs: {
+    display: 'flex',
+    borderTop: '1px solid rgba(255,255,255,0.2)',
+    marginTop: '0.5rem',
+  },
+  pageTab: (active) => ({
+    flex: 1,
+    padding: '0.65rem 0.5rem',
+    background: 'none',
+    border: 'none',
+    borderBottom: active ? '3px solid #FFD600' : '3px solid transparent',
+    color: active ? '#FFD600' : 'rgba(255,255,255,0.65)',
+    fontWeight: active ? 'bold' : 'normal',
+    fontSize: '0.88rem',
+    cursor: 'pointer',
+    minHeight: 'unset',
+    transition: 'color 0.2s',
+  }),
+  // 時間帯タブ（ミッションタブ内のみ表示）
   timeBlockTabs: {
     display: 'flex',
     overflowX: 'auto',
     scrollbarWidth: 'none',
     padding: '0 0.1rem',
     gap: '0.1rem',
+    borderTop: '1px solid rgba(255,255,255,0.15)',
   },
   timeTab: (active) => ({
     padding: '0.6rem 0.95rem',
@@ -183,7 +232,6 @@ const styles = {
     fontSize: '4.5rem',
     display: 'block',
     marginBottom: '0.5rem',
-    animation: 'none',
   },
   allDoneTitle: {
     fontSize: '1.6rem',
@@ -280,20 +328,71 @@ const styles = {
     opacity: 0.8,
     fontSize: '0.8em',
   },
+  // バッジ取得モーダル
+  badgeModalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    zIndex: 300,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeModal: {
+    background: '#fff',
+    borderRadius: '20px',
+    padding: '2rem 1.5rem',
+    textAlign: 'center',
+    maxWidth: '320px',
+    width: '90%',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
+    animation: 'none',
+  },
+  badgeModalEmoji: {
+    fontSize: '4rem',
+    display: 'block',
+    marginBottom: '0.5rem',
+  },
+  badgeModalTitle: {
+    fontSize: '1.4rem',
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: '0.3rem',
+  },
+  badgeModalLabel: {
+    fontSize: '1rem',
+    color: '#FFB300',
+    fontWeight: 'bold',
+    marginBottom: '0.4rem',
+  },
+  badgeModalDesc: {
+    fontSize: '0.9rem',
+    color: '#777',
+    lineHeight: 1.5,
+  },
 }
 
 export default function ChildApp() {
   const { user, signOut, switchRole } = useAuth()
   const { supported: notifSupported, permission, enabled: notifEnabled, loading: notifLoading, enable: enableNotif, disable: disableNotif } = useNotifications(user.id)
+  const [pageTab, setPageTab] = useState(TAB_MISSION)
   const [activeTimeBlock, setActiveTimeBlock] = useState(getCurrentTimeBlock())
   const [tasks, setTasks] = useState([])
   const [points, setPoints] = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [badges, setBadges] = useState([])
+  const [rewards, setRewards] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [completing, setCompleting] = useState(null)
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [submittingProposal, setSubmittingProposal] = useState(false)
   const [proposalSuccess, setProposalSuccess] = useState(false)
+  // 新バッジ取得モーダル
+  const [newBadges, setNewBadges] = useState([])  // 取得した badge_type 配列
+  const [badgeModalIdx, setBadgeModalIdx] = useState(0)
+  // おやモード切り替えPINモーダル
+  const [showPinModal, setShowPinModal] = useState(false)
 
   // ローカルで完了済みを管理（当日のみ）
   const [completedIds, setCompletedIds] = useState(() => {
@@ -330,12 +429,18 @@ export default function ChildApp() {
     setLoading(true)
     setError('')
     try {
-      const [myTasks, myPoints] = await Promise.all([
+      const [myTasks, myPoints, myStreak, myBadges, myRewards] = await Promise.all([
         getTasksForUser(user.id),
         getUserPoints(user.id),
+        getStreak(user.id),
+        getBadges(user.id),
+        getRewards(user.id),
       ])
       setTasks(myTasks)
       setPoints(myPoints)
+      setStreak(myStreak)
+      setBadges(myBadges)
+      setRewards(myRewards)
     } catch (e) {
       setError('データのよみこみに失敗しました。' + e.message)
     } finally {
@@ -359,11 +464,24 @@ export default function ChildApp() {
     setCompleting(taskId)
     setError('')
     try {
-      await logTaskCompletion(taskId, user.id, Number(pointValue || 0))
+      const earned = Number(pointValue || 0)
+      await logTaskCompletion(taskId, user.id, earned)
       const newCompleted = [...completedIds, taskId]
       setCompletedIds(newCompleted)
       localStorage.setItem(`completed_${getToday()}`, JSON.stringify(newCompleted))
-      setPoints(prev => prev + Number(pointValue || 0))
+      const newPoints = points + earned
+      setPoints(newPoints)
+
+      // タスク完了後にバッジチェック
+      const todayAllDone = allTasks.every(t => newCompleted.includes(t.task_id))
+      const awarded = await checkAndAwardBadges(user.id, newPoints, streak, todayAllDone)
+      if (awarded.length > 0) {
+        setNewBadges(awarded)
+        setBadgeModalIdx(0)
+        // バッジリストを更新
+        const updatedBadges = await getBadges(user.id)
+        setBadges(updatedBadges)
+      }
     } catch (e) {
       setError('かんりょうの記録に失敗しました。' + e.message)
     } finally {
@@ -406,6 +524,20 @@ export default function ChildApp() {
     }
   }
 
+  // バッジモーダルを閉じる（複数バッジの場合は次へ進む）
+  function closeBadgeModal() {
+    if (badgeModalIdx < newBadges.length - 1) {
+      setBadgeModalIdx(i => i + 1)
+    } else {
+      setNewBadges([])
+      setBadgeModalIdx(0)
+    }
+  }
+
+  // 現在表示中のバッジ
+  const currentNewBadge = newBadges[badgeModalIdx]
+  const currentBadgeDef = currentNewBadge ? getBadgeDef(currentNewBadge) : null
+
   return (
     <div style={styles.container}>
       {/* ヘッダー */}
@@ -416,8 +548,15 @@ export default function ChildApp() {
             <div style={styles.userName}>{user.name}！</div>
           </div>
           <div style={styles.headerRight}>
-            <div style={styles.pointDisplay}>
-              ⭐ {points} pt
+            <div style={styles.headerStats}>
+              {streak > 0 && (
+                <div style={styles.streakDisplay}>
+                  🔥{streak}にち
+                </div>
+              )}
+              <div style={styles.pointDisplay}>
+                ⭐ {points} pt
+              </div>
             </div>
             {/* 通知トグルボタン（denied の場合は非表示） */}
             {notifSupported && permission !== 'denied' && (
@@ -431,15 +570,15 @@ export default function ChildApp() {
               </button>
             )}
             {user.role === 'child' && (
-              <button style={styles.switchBtn} onClick={() => switchRole('parent')}>
+              <button style={styles.switchBtn} onClick={() => setShowPinModal(true)}>
                 おやモードへ
               </button>
             )}
           </div>
         </div>
 
-        {/* 今日の全体進捗バー */}
-        {!loading && allTasks.length > 0 && (
+        {/* 今日の全体進捗バー（ミッションタブのみ） */}
+        {!loading && allTasks.length > 0 && pageTab === TAB_MISSION && (
           <div style={styles.progressSection}>
             <div style={styles.progressLabel}>
               <span>きょうのミッション</span>
@@ -454,17 +593,35 @@ export default function ChildApp() {
           </div>
         )}
 
-        {/* 時間帯タブ */}
-        <div style={styles.timeBlockTabs}>
-          {TIME_BLOCKS.map(tb => (
-            <button
-              key={tb.value}
-              style={styles.timeTab(activeTimeBlock === tb.value)}
-              onClick={() => setActiveTimeBlock(tb.value)}
-            >
-              {tb.label}
-            </button>
-          ))}
+        {/* 時間帯タブ（ミッションタブのみ） */}
+        {pageTab === TAB_MISSION && (
+          <div style={styles.timeBlockTabs}>
+            {TIME_BLOCKS.map(tb => (
+              <button
+                key={tb.value}
+                style={styles.timeTab(activeTimeBlock === tb.value)}
+                onClick={() => setActiveTimeBlock(tb.value)}
+              >
+                {tb.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ページタブ */}
+        <div style={styles.pageTabs}>
+          <button
+            style={styles.pageTab(pageTab === TAB_MISSION)}
+            onClick={() => setPageTab(TAB_MISSION)}
+          >
+            🎯 ミッション
+          </button>
+          <button
+            style={styles.pageTab(pageTab === TAB_MYPAGE)}
+            onClick={() => setPageTab(TAB_MYPAGE)}
+          >
+            👤 マイページ
+          </button>
         </div>
       </header>
 
@@ -479,75 +636,101 @@ export default function ChildApp() {
 
         {error && <div style={styles.error}>{error}</div>}
 
-        {loading ? (
-          <div style={styles.loading}>よみこみちゅう…</div>
-        ) : allDone ? (
-          <div style={styles.allDone}>
-            <span style={styles.allDoneEmoji}>🎉</span>
-            <div style={styles.allDoneTitle}>ぜんぶクリア！</div>
-            <div style={styles.allDoneMsg}>
-              この時間のミッションをぜんぶやったよ！<br />
-              すごい！よくがんばった！
-            </div>
-          </div>
-        ) : currentMissions.length === 0 ? (
-          <div style={styles.empty}>
-            この時間のミッションはないよ。<br />
-            ほかの時間をみてみよう！🔍
-          </div>
-        ) : (
+        {/* ---- ミッションタブ ---- */}
+        {pageTab === TAB_MISSION && (
           <>
-            <div style={styles.sectionTitle}>🎯 ミッション</div>
-            <div style={styles.missionList}>
-              {currentMissions.map(task => (
-                <MissionCard
-                  key={task.task_id}
-                  task={task}
-                  completed={completedIds.includes(task.task_id)}
-                  onComplete={handleComplete}
-                  completing={completing === task.task_id}
-                />
-              ))}
-            </div>
+            {loading ? (
+              <div style={styles.loading}>よみこみちゅう…</div>
+            ) : allDone ? (
+              <div style={styles.allDone}>
+                <span style={styles.allDoneEmoji}>🎉</span>
+                <div style={styles.allDoneTitle}>ぜんぶクリア！</div>
+                <div style={styles.allDoneMsg}>
+                  この時間のミッションをぜんぶやったよ！<br />
+                  すごい！よくがんばった！
+                </div>
+              </div>
+            ) : currentMissions.length === 0 ? (
+              <div style={styles.empty}>
+                この時間のミッションはないよ。<br />
+                ほかの時間をみてみよう！🔍
+              </div>
+            ) : (
+              <>
+                <div style={styles.sectionTitle}>🎯 ミッション</div>
+                <div style={styles.missionList}>
+                  {currentMissions.map(task => (
+                    <MissionCard
+                      key={task.task_id}
+                      task={task}
+                      completed={completedIds.includes(task.task_id)}
+                      onComplete={handleComplete}
+                      completing={completing === task.task_id}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* 承認待ちの提案一覧 */}
+            {!loading && pendingProposals.length > 0 && (
+              <div style={styles.proposalSection}>
+                <div style={styles.sectionTitle}>
+                  💡 おやがかくにんちゅう（{pendingProposals.length}件）
+                </div>
+                <div style={styles.pendingList}>
+                  {pendingProposals.map(task => (
+                    <div key={task.task_id} style={styles.pendingItem}>
+                      <span>{task.icon || '💡'}</span>
+                      <span>{task.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={styles.signOutLink} onClick={signOut}>ログアウト</div>
           </>
         )}
 
-        {/* 承認待ちの提案一覧 */}
-        {pendingProposals.length > 0 && (
-          <div style={styles.proposalSection}>
-            <div style={styles.sectionTitle}>
-              💡 おやがかくにんちゅう（{pendingProposals.length}件）
-            </div>
-            <div style={styles.pendingList}>
-              {pendingProposals.map(task => (
-                <div key={task.task_id} style={styles.pendingItem}>
-                  <span>{task.icon || '💡'}</span>
-                  <span>{task.title}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* ---- マイページタブ ---- */}
+        {pageTab === TAB_MYPAGE && (
+          <>
+            {loading ? (
+              <div style={styles.loading}>よみこみちゅう…</div>
+            ) : (
+              <>
+                <BadgePanel badges={badges} />
+                <RewardShop
+                  rewards={rewards}
+                  points={points}
+                  onRedeemed={loadData}
+                />
+                <div style={styles.signOutLink} onClick={signOut}>ログアウト</div>
+              </>
+            )}
+          </>
         )}
-
-        <div style={styles.signOutLink} onClick={signOut}>ログアウト</div>
       </div>
 
-      {/* 提案するボタン（固定） */}
-      <button
-        style={{
-          ...styles.proposeBtn,
-          opacity: todayProposals >= PROPOSAL_LIMIT ? 0.5 : 1,
-        }}
-        onClick={() => setShowProposalForm(true)}
-        disabled={todayProposals >= PROPOSAL_LIMIT}
-      >
-        💡 ていあんする
-        {todayProposals > 0 && (
-          <span style={styles.proposalCount}>
-            {todayProposals}/{PROPOSAL_LIMIT}
-          </span>
-        )}
-      </button>
+      {/* 提案するボタン（ミッションタブのみ固定表示） */}
+      {pageTab === TAB_MISSION && (
+        <button
+          style={{
+            ...styles.proposeBtn,
+            opacity: todayProposals >= PROPOSAL_LIMIT ? 0.5 : 1,
+          }}
+          onClick={() => setShowProposalForm(true)}
+          disabled={todayProposals >= PROPOSAL_LIMIT}
+        >
+          💡 ていあんする
+          {todayProposals > 0 && (
+            <span style={styles.proposalCount}>
+              {todayProposals}/{PROPOSAL_LIMIT}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* 提案フォーム */}
       {showProposalForm && (
@@ -556,6 +739,45 @@ export default function ChildApp() {
           onClose={() => setShowProposalForm(false)}
           submitting={submittingProposal}
         />
+      )}
+
+      {/* おやモード切り替えPINモーダル */}
+      {showPinModal && (
+        <PinModal
+          parentId={user.parent_id || user.id}
+          onSuccess={() => { setShowPinModal(false); switchRole('parent') }}
+          onClose={() => setShowPinModal(false)}
+        />
+      )}
+
+      {/* バッジ取得モーダル */}
+      {currentBadgeDef && (
+        <div style={styles.badgeModalOverlay} onClick={closeBadgeModal}>
+          <div style={styles.badgeModal} onClick={e => e.stopPropagation()}>
+            <span style={styles.badgeModalEmoji}>{currentBadgeDef.icon}</span>
+            <div style={styles.badgeModalTitle}>🎉 バッジゲット！</div>
+            <div style={styles.badgeModalLabel}>{currentBadgeDef.label}</div>
+            <div style={styles.badgeModalDesc}>{currentBadgeDef.desc}</div>
+            <button
+              style={{
+                marginTop: '1.25rem',
+                padding: '0.7rem 2rem',
+                background: 'linear-gradient(135deg, #FFB300 0%, #FF8F00 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '999px',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                minHeight: 'auto',
+                boxShadow: '0 3px 12px rgba(255,143,0,0.4)',
+              }}
+              onClick={closeBadgeModal}
+            >
+              {badgeModalIdx < newBadges.length - 1 ? 'つぎへ →' : 'やったー！'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
