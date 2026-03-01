@@ -9,6 +9,8 @@ import {
   getChildren,
   getRewardRequests,
   addParentToChild,
+  getUserPoints,
+  getTaskLogsWithDetails,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
@@ -22,6 +24,7 @@ const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
 const TAB_PROPOSALS = 'proposals'
 const TAB_REWARDS = 'rewards'
+const TAB_HISTORY = 'history'
 
 const styles = {
   container: {
@@ -223,6 +226,74 @@ const styles = {
     lineHeight: 1.7,
     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
   },
+  // 履歴タブ用スタイル
+  historySelector: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginBottom: '1rem',
+    flexWrap: 'wrap',
+  },
+  historySelectorBtn: (active) => ({
+    padding: '0.45rem 0.85rem',
+    borderRadius: '999px',
+    border: active ? 'none' : '1px solid #ddd',
+    background: active ? '#2E75B6' : '#fff',
+    color: active ? '#fff' : '#666',
+    fontSize: '0.85rem',
+    fontWeight: active ? 'bold' : 'normal',
+    cursor: 'pointer',
+    minHeight: 'auto',
+  }),
+  historyCard: {
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '0.9rem 1rem',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    marginBottom: '0.6rem',
+  },
+  historyIcon: {
+    fontSize: '1.4rem',
+    flexShrink: 0,
+  },
+  historyBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historyTitle: {
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: '0.2rem',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  historyDate: {
+    fontSize: '0.75rem',
+    color: '#aaa',
+  },
+  historyPoints: (pts) => ({
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    color: pts >= 0 ? '#4CAF50' : '#F44336',
+    flexShrink: 0,
+    minWidth: '2.5rem',
+    textAlign: 'right',
+  }),
+  pointsBadge: {
+    background: 'linear-gradient(135deg, #FFD700, #FFA000)',
+    color: '#5D4037',
+    borderRadius: '999px',
+    padding: '0.2rem 0.6rem',
+    fontSize: '0.82rem',
+    fontWeight: 'bold',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.2rem',
+  },
 }
 
 export default function ParentApp() {
@@ -243,6 +314,11 @@ export default function ParentApp() {
   const [linkStatus, setLinkStatus] = useState('') // 'success' | 'error' | ''
   const [linkMessage, setLinkMessage] = useState('')
   const [linking, setLinking] = useState(false)
+  // 履歴タブ用
+  const [childPoints, setChildPoints] = useState({}) // { [childId]: number }
+  const [childLogs, setChildLogs] = useState({})     // { [childId]: log[] }
+  const [historyChildId, setHistoryChildId] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -256,6 +332,14 @@ export default function ParentApp() {
       setTasks(allTasks.filter(t => t.status === 'active'))
       setChildren(childList)
       setRewardRequests(rewardReqs)
+
+      // 各子どものポイントをまとめて取得
+      if (childList.length > 0) {
+        const pointsArr = await Promise.all(childList.map(c => getUserPoints(c.user_id)))
+        const pts = {}
+        childList.forEach((c, i) => { pts[c.user_id] = pointsArr[i] })
+        setChildPoints(pts)
+      }
     } catch (e) {
       setError('データの読み込みに失敗しました。' + e.message)
     } finally {
@@ -330,6 +414,21 @@ export default function ParentApp() {
       await loadData()
     } catch (e) {
       setError('タスクの削除に失敗しました。' + e.message)
+    }
+  }
+
+  // 子どもを選択して完了ログを読み込む
+  async function handleSelectHistoryChild(childId) {
+    setHistoryChildId(childId)
+    if (childLogs[childId]) return // キャッシュ済みならスキップ
+    setHistoryLoading(true)
+    try {
+      const logs = await getTaskLogsWithDetails(childId)
+      setChildLogs(prev => ({ ...prev, [childId]: logs }))
+    } catch (e) {
+      setError('履歴の読み込みに失敗しました。' + e.message)
+    } finally {
+      setHistoryLoading(false)
     }
   }
 
@@ -434,6 +533,19 @@ export default function ParentApp() {
             <span style={styles.tabBadge}>{rewardRequests.length}</span>
           )}
         </button>
+        <button
+          className="tab-item"
+          style={styles.tab(tab === TAB_HISTORY)}
+          onClick={() => {
+            setTab(TAB_HISTORY)
+            // 子どもが1人以上いれば最初を自動選択
+            if (children.length > 0 && !historyChildId) {
+              handleSelectHistoryChild(children[0].user_id)
+            }
+          }}
+        >
+          履歴
+        </button>
       </div>
 
       {/* ボディ */}
@@ -492,6 +604,7 @@ export default function ParentApp() {
                             child={child}
                             taskCount={taskCount}
                             proposalCount={proposalCount}
+                            points={childPoints[child.user_id]}
                           />
                         )
                       })}
@@ -579,6 +692,70 @@ export default function ParentApp() {
         {/* ---- ご褒美管理 ---- */}
         {tab === TAB_REWARDS && (
           <RewardManager parentId={user.id} children={children} />
+        )}
+
+        {/* ---- 履歴 ---- */}
+        {tab === TAB_HISTORY && (
+          <>
+            {children.length === 0 ? (
+              <div style={styles.empty}>
+                子どものアカウントが登録されていません。<br />
+                ダッシュボードから子どもをリンクしてください。
+              </div>
+            ) : (
+              <>
+                {/* 子ども選択 */}
+                <div style={styles.historySelector}>
+                  {children.map(child => (
+                    <button
+                      key={child.user_id}
+                      style={styles.historySelectorBtn(historyChildId === child.user_id)}
+                      onClick={() => handleSelectHistoryChild(child.user_id)}
+                    >
+                      {child.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 選択中の子どものポイント合計 */}
+                {historyChildId && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', padding: '0.85rem 1rem', background: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                    <span style={{ fontSize: '1.3rem' }}>🏆</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: '0.2rem' }}>現在の保有ポイント</div>
+                      <span style={styles.pointsBadge}>
+                        ⭐ {childPoints[historyChildId] ?? '…'} pt
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 完了ログ一覧 */}
+                {historyLoading ? (
+                  <div style={styles.loading}>よみこみちゅう…</div>
+                ) : historyChildId && (childLogs[historyChildId] || []).length === 0 ? (
+                  <div style={styles.empty}>完了したタスクはまだありません。</div>
+                ) : historyChildId ? (
+                  (childLogs[historyChildId] || []).map(log => (
+                    <div key={log.log_id} style={styles.historyCard}>
+                      <span style={styles.historyIcon}>✅</span>
+                      <div style={styles.historyBody}>
+                        <div style={styles.historyTitle}>{log.title}</div>
+                        <div style={styles.historyDate}>
+                          {log.completed_at
+                            ? new Date(log.completed_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : '日時不明'}
+                        </div>
+                      </div>
+                      <div style={styles.historyPoints(log.points_earned)}>
+                        {log.points_earned >= 0 ? '+' : ''}{log.points_earned} pt
+                      </div>
+                    </div>
+                  ))
+                ) : null}
+              </>
+            )}
+          </>
         )}
       </div>
 
