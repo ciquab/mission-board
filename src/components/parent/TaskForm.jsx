@@ -190,14 +190,20 @@ const defaultForm = {
   icon: '⭐',
 }
 
+function toBoolean(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.toLowerCase() === 'true'
+  return false
+}
+
 export default function TaskForm({ initialData, children, onSubmit, onClose, submitting }) {
   const [form, setForm] = useState(() => {
     if (!initialData) return defaultForm
     return {
       ...defaultForm,
       ...initialData,
-      // Sheetsから文字列で来る 'true'/'false' をbooleanに変換
-      require_approval: initialData.require_approval === 'true',
+      // Sheetsの表記揺れ（true/TRUE/boolean）を吸収してboolean化
+      require_approval: toBoolean(initialData.require_approval),
     }
   })
 
