@@ -57,6 +57,16 @@ function isTaskScheduledToday(recurrence) {
   return true
 }
 
+function isTrueLike(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase()
+    return v === 'true' || v === '1' || v === 'yes'
+  }
+  return false
+}
+
 // 1日の提案上限
 const PROPOSAL_LIMIT = 5
 
@@ -559,7 +569,7 @@ export default function ChildApp() {
     try {
       // タスクの require_approval を確認
       const task = tasks.find(t => t.task_id === taskId)
-      const needsApproval = task && task.require_approval === 'true'
+      const needsApproval = task && isTrueLike(task.require_approval)
 
       // 承認必要な場合はポイント0で記録し、親の承認後にポイント付与
       const earned = needsApproval ? 0 : Number(pointValue || 0)

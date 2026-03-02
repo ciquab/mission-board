@@ -17,6 +17,17 @@ export const SHEETS = {
   BADGES: 'badges',
 }
 
+
+function isTrueLike(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase()
+    return v === 'true' || v === '1' || v === 'yes'
+  }
+  return false
+}
+
 // アクセストークン（OAuth後に設定される）
 let accessToken = null
 export function setAccessToken(token) {
@@ -164,7 +175,7 @@ export async function getPendingProposals(parentId) {
   ])
   // parentId に紐づく子どものIDリストを取得してフィルタリング
   const childIds = userRows
-    .filter(r => r[4] === parentId)
+    .filter(r => (r[4] || '').split(',').map(id => id.trim()).includes(parentId))
     .map(r => r[0])
   return tasks.filter(t =>
     t.approval_status === 'pending' && childIds.includes(t.created_by)
@@ -373,7 +384,7 @@ export async function getTodayCompletedTaskIds() {
   // task_id → require_approval のマップ
   const requireApprovalMap = {}
   for (const r of taskRows) {
-    requireApprovalMap[r[0]] = r[12] === 'true'
+    requireApprovalMap[r[0]] = isTrueLike(r[12])
   }
 
   const completed = {} // { userId: [taskId, ...] }
@@ -427,7 +438,7 @@ export async function getPendingCompletionLogs(childIds) {
       const approvedBy = r[4]
       const task = taskMap[taskId]
       return task &&
-        task.require_approval === 'true' &&
+        isTrueLike(task.require_approval) &&
         !approvedBy &&
         childIds.includes(userId)
     })
@@ -476,7 +487,7 @@ export async function getUserPendingApprovalTaskIds(userId) {
 
   const requireApprovalMap = {}
   for (const r of taskRows) {
-    requireApprovalMap[r[0]] = r[12] === 'true'
+    requireApprovalMap[r[0]] = isTrueLike(r[12])
   }
 
   return logRows
@@ -498,13 +509,14 @@ export async function getStreak(userId) {
     .filter(r => r[2] === userId && r[3])
     .map(r => new Date(r[3]).toDateString())
 
-  const uniqueDates = [...new Set(logs)].sort().reverse()
+  const uniqueDates = [...new Set(logs)]
+    .map(dateStr => new Date(dateStr))
+    .sort((a, b) => b - a)
   let streak = 0
   let current = new Date()
   current.setHours(0, 0, 0, 0)
 
-  for (const dateStr of uniqueDates) {
-    const date = new Date(dateStr)
+  for (const date of uniqueDates) {
     const diff = (current - date) / (1000 * 60 * 60 * 24)
     if (diff <= 1) {
       streak++
