@@ -586,12 +586,20 @@ export async function checkAndAwardBadges(userId, totalPoints, streak, allTasksD
   // ストリーク系
   if (streak >= 3 && !has('streak_3')) candidates.push('streak_3')
   if (streak >= 7 && !has('streak_7')) candidates.push('streak_7')
+  if (streak >= 14 && !has('streak_14')) candidates.push('streak_14')
   if (streak >= 30 && !has('streak_30')) candidates.push('streak_30')
+  if (streak >= 60 && !has('streak_60')) candidates.push('streak_60')
+  if (streak >= 90 && !has('streak_90')) candidates.push('streak_90')
 
   // ポイント系
-  if (totalPoints >= 10 && !has('points_10')) candidates.push('points_10')
-  if (totalPoints >= 50 && !has('points_50')) candidates.push('points_50')
-  if (totalPoints >= 100 && !has('points_100')) candidates.push('points_100')
+  if (totalPoints >= 20 && !has('points_10')) candidates.push('points_10')
+  if (totalPoints >= 80 && !has('points_50')) candidates.push('points_50')
+  if (totalPoints >= 150 && !has('points_100')) candidates.push('points_100')
+  if (totalPoints >= 250 && !has('points_250')) candidates.push('points_250')
+  if (totalPoints >= 400 && !has('points_400')) candidates.push('points_400')
+  if (totalPoints >= 600 && !has('points_600')) candidates.push('points_600')
+  if (totalPoints >= 900 && !has('points_900')) candidates.push('points_900')
+  if (totalPoints >= 1200 && !has('points_1200')) candidates.push('points_1200')
 
   // 全タスク完了
   if (allTasksDone && !has('all_done')) candidates.push('all_done')
