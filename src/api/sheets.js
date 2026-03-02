@@ -87,7 +87,8 @@ async function getRowsPublic(sheetName, range = '') {
  * @param {Array} row - 追加する行データ
  */
 export async function appendRow(sheetName, row) {
-  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
+  const range = `${sheetName}!A1`
+  const url = `${BASE_URL}/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
 
   const res = await fetch(url, {
     method: 'POST',
