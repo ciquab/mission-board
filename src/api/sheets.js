@@ -325,7 +325,7 @@ export async function logTaskCompletion(taskId, userId, pointsEarned) {
 export async function getUserPoints(userId) {
   const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
   return rows
-    .filter(r => r[1] === userId)
+    .filter(r => r[2] === userId)
     .reduce((sum, r) => sum + Number(r[6] || 0), 0)
 }
 
@@ -347,7 +347,7 @@ export async function getTaskLogsWithDetails(userId) {
   }
 
   return logRows
-    .filter(r => r[1] === userId)
+    .filter(r => r[2] === userId)
     .map(r => ({
       log_id: r[0],
       task_id: r[1],
@@ -358,28 +358,144 @@ export async function getTaskLogsWithDetails(userId) {
     .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
 }
 
-/** 今日の完了タスクIDをユーザーごとにまとめて取得（親ダッシュボード用） */
+/** 今日の完了タスクIDをユーザーごとにまとめて取得（親ダッシュボード用）
+ * @returns {{ completed: Object, pendingApproval: Object }}
+ *   completed: { userId: [taskId, ...] } - 今日完了した全タスク
+ *   pendingApproval: { userId: [taskId, ...] } - 承認待ちのタスク
+ */
 export async function getTodayCompletedTaskIds() {
-  const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
+  const [logRows, taskRows] = await Promise.all([
+    getRows(SHEETS.TASK_LOGS, 'A2:G'),
+    getRows(SHEETS.TASKS, 'A2:O'),
+  ])
   const today = new Date().toDateString()
-  const result = {} // { userId: [taskId, ...] }
-  for (const r of rows) {
+
+  // task_id → require_approval のマップ
+  const requireApprovalMap = {}
+  for (const r of taskRows) {
+    requireApprovalMap[r[0]] = r[12] === 'true'
+  }
+
+  const completed = {} // { userId: [taskId, ...] }
+  const pendingApproval = {} // { userId: [taskId, ...] }
+  for (const r of logRows) {
     const taskId = r[1]
     const userId = r[2]
     const completedAt = r[3]
+    const approvedBy = r[4]
     if (completedAt && new Date(completedAt).toDateString() === today) {
-      if (!result[userId]) result[userId] = []
-      result[userId].push(taskId)
+      // 却下済みはスキップ
+      if (approvedBy === 'rejected') continue
+      if (!completed[userId]) completed[userId] = []
+      completed[userId].push(taskId)
+      // 承認必要で未承認のタスク
+      if (requireApprovalMap[taskId] && !approvedBy) {
+        if (!pendingApproval[userId]) pendingApproval[userId] = []
+        pendingApproval[userId].push(taskId)
+      }
     }
   }
-  return result
+  return { completed, pendingApproval }
+}
+
+/**
+ * 承認待ちの完了ログを取得（親の承認待ちタブ用）
+ * require_approval が true で approved_by が空のログを返す
+ * @param {string[]} childIds - 子どものID配列
+ */
+export async function getPendingCompletionLogs(childIds) {
+  const [logRows, taskRows, userRows] = await Promise.all([
+    getRows(SHEETS.TASK_LOGS, 'A2:G'),
+    getRows(SHEETS.TASKS, 'A2:O'),
+    getRows(SHEETS.USERS, 'A2:G'),
+  ])
+
+  const taskMap = {}
+  for (const r of taskRows) {
+    taskMap[r[0]] = rowToTask(r)
+  }
+
+  const userMap = {}
+  for (const r of userRows) {
+    userMap[r[0]] = rowToUser(r)
+  }
+
+  return logRows
+    .filter(r => {
+      const taskId = r[1]
+      const userId = r[2]
+      const approvedBy = r[4]
+      const task = taskMap[taskId]
+      return task &&
+        task.require_approval === 'true' &&
+        !approvedBy &&
+        childIds.includes(userId)
+    })
+    .map(r => ({
+      log_id: r[0],
+      task_id: r[1],
+      user_id: r[2],
+      completed_at: r[3],
+      task: taskMap[r[1]],
+      child_name: userMap[r[2]]?.name || r[2],
+    }))
+    .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+}
+
+/** 完了ログを承認する（ポイント付与） */
+export async function approveTaskLog(logId, approverId, pointsEarned) {
+  const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
+  const rowIndex = rows.findIndex(r => r[0] === logId)
+  if (rowIndex === -1) throw new Error('ログが見つかりません')
+
+  const updated = [...rows[rowIndex]]
+  updated[4] = approverId                // approved_by
+  updated[5] = new Date().toISOString()  // approved_at
+  updated[6] = pointsEarned             // points_earned
+  await updateRow(SHEETS.TASK_LOGS, rowIndex + 2, updated)
+}
+
+/** 完了ログを却下する（タスクを未完了に戻す） */
+export async function rejectTaskLog(logId) {
+  const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
+  const rowIndex = rows.findIndex(r => r[0] === logId)
+  if (rowIndex === -1) throw new Error('ログが見つかりません')
+
+  const updated = [...rows[rowIndex]]
+  updated[4] = 'rejected'   // approved_by に 'rejected' をセット
+  updated[6] = '0'          // points_earned を 0 に
+  await updateRow(SHEETS.TASK_LOGS, rowIndex + 2, updated)
+}
+
+/** ユーザーの承認待ちタスクIDを取得（子ども用） */
+export async function getUserPendingApprovalTaskIds(userId) {
+  const [logRows, taskRows] = await Promise.all([
+    getRows(SHEETS.TASK_LOGS, 'A2:G'),
+    getRows(SHEETS.TASKS, 'A2:O'),
+  ])
+
+  const requireApprovalMap = {}
+  for (const r of taskRows) {
+    requireApprovalMap[r[0]] = r[12] === 'true'
+  }
+
+  return logRows
+    .filter(r => {
+      const taskId = r[1]
+      const userId_ = r[2]
+      const approvedBy = r[4]
+      return userId_ === userId &&
+        requireApprovalMap[taskId] &&
+        !approvedBy
+    })
+    .map(r => r[1]) // task_id
 }
 
 /** 連続達成日数（ストリーク）を計算 */
 export async function getStreak(userId) {
   const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
   const logs = rows
-    .filter(r => r[1] === userId && r[3])
+    .filter(r => r[2] === userId && r[3])
     .map(r => new Date(r[3]).toDateString())
 
   const uniqueDates = [...new Set(logs)].sort().reverse()

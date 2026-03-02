@@ -66,9 +66,26 @@ const styles = {
     fontSize: '2.2rem',
     flexShrink: 0,
   },
+  pendingMark: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.15rem',
+    flexShrink: 0,
+  },
+  pendingEmoji: {
+    fontSize: '2rem',
+    lineHeight: 1,
+  },
+  pendingLabel: {
+    fontSize: '0.65rem',
+    color: '#F57F17',
+    fontWeight: 'bold',
+    whiteSpace: 'nowrap',
+  },
 }
 
-export default function MissionCard({ task, completed, onComplete, completing }) {
+export default function MissionCard({ task, completed, pendingApproval, onComplete, completing }) {
   function handleClick() {
     if (completing) return
     fireConfetti()
@@ -86,7 +103,14 @@ export default function MissionCard({ task, completed, onComplete, completing })
         )}
       </div>
       {completed ? (
-        <div style={styles.completedMark}>✅</div>
+        pendingApproval ? (
+          <div style={styles.pendingMark}>
+            <span style={styles.pendingEmoji}>⏳</span>
+            <span style={styles.pendingLabel}>しんさちゅう</span>
+          </div>
+        ) : (
+          <div style={styles.completedMark}>✅</div>
+        )
       ) : (
         <button
           style={{ ...styles.completeBtn, opacity: completing ? 0.7 : 1 }}

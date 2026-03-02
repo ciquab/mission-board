@@ -12,6 +12,9 @@ import {
   getUserPoints,
   getTaskLogsWithDetails,
   getTodayCompletedTaskIds,
+  getPendingCompletionLogs,
+  approveTaskLog,
+  rejectTaskLog,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
@@ -407,6 +410,10 @@ export default function ParentApp() {
   const [linking, setLinking] = useState(false)
   // ダッシュボード：今日の完了タスクID（ユーザーごと）
   const [todayCompleted, setTodayCompleted] = useState({})
+  // ダッシュボード：承認待ちタスクID（ユーザーごと）
+  const [todayPendingApproval, setTodayPendingApproval] = useState({})
+  // 承認待ちタブ：完了承認待ちログ
+  const [pendingCompletionLogs, setPendingCompletionLogs] = useState([])
   // タスク管理タブ 絞り込み・ソート
   const [taskSearch, setTaskSearch] = useState('')
   const [taskFilterChild, setTaskFilterChild] = useState('')
@@ -426,7 +433,7 @@ export default function ParentApp() {
     setLoading(true)
     setError('')
     try {
-      const [allTasks, childList, rewardReqs, todayDone] = await Promise.all([
+      const [allTasks, childList, rewardReqs, todayDoneResult] = await Promise.all([
         getTasks(),
         getChildren(user.id),
         getRewardRequests(user.id),
@@ -435,13 +442,19 @@ export default function ParentApp() {
       setTasks(allTasks.filter(t => t.status === 'active'))
       setChildren(childList)
       setRewardRequests(rewardReqs)
-      setTodayCompleted(todayDone)
-      // 各子どものポイントをまとめて取得
+      setTodayCompleted(todayDoneResult.completed)
+      setTodayPendingApproval(todayDoneResult.pendingApproval)
+      // 各子どものポイントと完了承認待ちログをまとめて取得
       if (childList.length > 0) {
-        const pointsArr = await Promise.all(childList.map(c => getUserPoints(c.user_id)))
+        const childIds = childList.map(c => c.user_id)
+        const [pointsArr, completionLogs] = await Promise.all([
+          Promise.all(childList.map(c => getUserPoints(c.user_id))),
+          getPendingCompletionLogs(childIds),
+        ])
         const pts = {}
         childList.forEach((c, i) => { pts[c.user_id] = pointsArr[i] })
         setChildPoints(pts)
+        setPendingCompletionLogs(completionLogs)
       }
     } catch (e) {
       setError('データの読み込みに失敗しました。' + e.message)
@@ -464,18 +477,24 @@ export default function ParentApp() {
     return child?.name || task.assigned_to || '未割り当て'
   }
 
-  // 子どもごとの「今日のタスク」を取得（完了・未完了を分類）
+  // 子どもごとの「今日のタスク」を取得（完了・未完了・承認待ちを分類）
   function getChildTodayTasks(childId) {
     const timeBlockOrder = { morning: 0, afternoon: 1, evening: 2, night: 3, bedtime: 4 }
     const childTasks = activeTasks.filter(t =>
       t.assigned_to === childId && isTaskScheduledToday(t.recurrence)
     )
     const completedSet = new Set(todayCompleted[childId] || [])
+    const pendingSet = new Set(todayPendingApproval[childId] || [])
     return childTasks
-      .map(t => ({ ...t, completedToday: completedSet.has(t.task_id) }))
+      .map(t => ({
+        ...t,
+        completedToday: completedSet.has(t.task_id),
+        pendingApproval: pendingSet.has(t.task_id),
+      }))
       .sort((a, b) => {
-        // 未完了を先に、同じステータスなら時間帯順
-        if (a.completedToday !== b.completedToday) return a.completedToday ? 1 : -1
+        // 未完了を先に、承認待ちを次に、完了を最後に、同じステータスなら時間帯順
+        const order = (t) => t.pendingApproval ? 1 : t.completedToday ? 2 : 0
+        if (order(a) !== order(b)) return order(a) - order(b)
         return (timeBlockOrder[a.time_block] ?? 99) - (timeBlockOrder[b.time_block] ?? 99)
       })
   }
@@ -611,6 +630,29 @@ export default function ParentApp() {
     }
   }
 
+  // タスク完了の承認
+  async function handleApproveCompletion(logId, pointsEarned) {
+    setError('')
+    try {
+      await approveTaskLog(logId, user.id, Number(pointsEarned))
+      await loadData()
+    } catch (e) {
+      setError('承認に失敗しました。' + e.message)
+    }
+  }
+
+  // タスク完了の却下
+  async function handleRejectCompletion(logId) {
+    if (!confirm('この完了報告を却下しますか？')) return
+    setError('')
+    try {
+      await rejectTaskLog(logId)
+      await loadData()
+    } catch (e) {
+      setError('却下に失敗しました。' + e.message)
+    }
+  }
+
   async function handleLinkChild(e) {
     e.preventDefault()
     if (!linkEmail.trim()) return
@@ -681,8 +723,8 @@ export default function ParentApp() {
         </button>
         <button className="tab-item" style={styles.tab(tab === TAB_PROPOSALS)} onClick={() => setTab(TAB_PROPOSALS)}>
           承認待ち
-          {proposals.length > 0 && (
-            <span style={styles.tabBadge}>{proposals.length}</span>
+          {(proposals.length + pendingCompletionLogs.length) > 0 && (
+            <span style={styles.tabBadge}>{proposals.length + pendingCompletionLogs.length}</span>
           )}
         </button>
         <button className="tab-item" style={styles.tab(tab === TAB_REWARDS)} onClick={() => setTab(TAB_REWARDS)}>
@@ -734,9 +776,9 @@ export default function ParentApp() {
                           今日の進捗{todayTotalPts > 0 && ` (${todayEarnedPts}/${todayTotalPts}pt)`}
                         </div>
                       </div>
-                      <div style={styles.summaryCard(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
-                        <div style={styles.summaryNum(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
-                          {proposals.length}
+                      <div style={styles.summaryCard((proposals.length + pendingCompletionLogs.length) > 0 ? '#F44336' : '#9E9E9E')}>
+                        <div style={styles.summaryNum((proposals.length + pendingCompletionLogs.length) > 0 ? '#F44336' : '#9E9E9E')}>
+                          {proposals.length + pendingCompletionLogs.length}
                         </div>
                         <div style={styles.summaryLabel}>承認待ち</div>
                       </div>
@@ -766,12 +808,14 @@ export default function ParentApp() {
                       {children.map(child => {
                         const todayTasks = getChildTodayTasks(child.user_id)
                         const proposalCount = proposals.filter(t => t.created_by === child.user_id).length
+                        const pendingApprovalCount = pendingCompletionLogs.filter(l => l.user_id === child.user_id).length
                         return (
                           <ChildProgressCard
                             key={child.user_id}
                             child={child}
                             todayTasks={todayTasks}
                             proposalCount={proposalCount}
+                            pendingApprovalCount={pendingApprovalCount}
                             points={childPoints[child.user_id]}
                           />
                         )
@@ -781,18 +825,32 @@ export default function ParentApp() {
                 </div>
 
                 {/* 承認待ちがあれば誘導 */}
-                {proposals.length > 0 && (
+                {(proposals.length + pendingCompletionLogs.length) > 0 && (
                   <div style={styles.dashSection}>
                     <div style={styles.dashSectionTitle}>アクション必要</div>
-                    <button
-                      style={{
-                        ...styles.addBtn,
-                        background: '#F44336',
-                      }}
-                      onClick={() => setTab(TAB_PROPOSALS)}
-                    >
-                      💡 承認待ちの提案を確認する（{proposals.length}件）
-                    </button>
+                    {pendingCompletionLogs.length > 0 && (
+                      <button
+                        style={{
+                          ...styles.addBtn,
+                          background: '#FF6F00',
+                          marginBottom: proposals.length > 0 ? '0.5rem' : 0,
+                        }}
+                        onClick={() => setTab(TAB_PROPOSALS)}
+                      >
+                        ✅ 完了承認待ち（{pendingCompletionLogs.length}件）
+                      </button>
+                    )}
+                    {proposals.length > 0 && (
+                      <button
+                        style={{
+                          ...styles.addBtn,
+                          background: '#F44336',
+                        }}
+                        onClick={() => setTab(TAB_PROPOSALS)}
+                      >
+                        💡 承認待ちの提案を確認する（{proposals.length}件）
+                      </button>
+                    )}
                   </div>
                 )}
               </>
@@ -897,23 +955,95 @@ export default function ParentApp() {
           <>
             {loading ? (
               <div style={styles.loading}>よみこみちゅう…</div>
-            ) : proposals.length === 0 ? (
+            ) : (proposals.length === 0 && pendingCompletionLogs.length === 0) ? (
               <div style={styles.empty}>
-                承認待ちの提案はありません。
+                承認待ちの項目はありません。
               </div>
             ) : (
               <div style={styles.taskList}>
-                {proposals.map(task => (
-                  <ProposalCard
-                    key={task.task_id}
-                    task={task}
-                    proposerName={
-                      children.find(c => c.user_id === task.created_by)?.name || task.created_by
-                    }
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                  />
-                ))}
+                {/* 完了承認待ち */}
+                {pendingCompletionLogs.length > 0 && (
+                  <>
+                    <div style={styles.dashSectionTitle}>✅ 完了の承認待ち（{pendingCompletionLogs.length}件）</div>
+                    {pendingCompletionLogs.map(log => (
+                      <div key={log.log_id} style={{
+                        background: '#E8F5E9',
+                        border: '2px solid #66BB6A',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                          <div style={{ fontSize: '2rem', lineHeight: 1 }}>{log.task?.icon || '✅'}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#222', marginBottom: '0.2rem' }}>
+                              {log.task?.title || '不明なタスク'}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#888' }}>
+                              {log.child_name} が完了報告 ・ {log.completed_at
+                                ? new Date(log.completed_at).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+                                : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#555' }}>ポイント: {log.task?.point_value || 0}pt</span>
+                          <button
+                            style={{
+                              padding: '0.45rem 1rem',
+                              background: '#4CAF50',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '0.85rem',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              minHeight: 'auto',
+                            }}
+                            onClick={() => handleApproveCompletion(log.log_id, log.task?.point_value || 0)}
+                          >
+                            承認する
+                          </button>
+                          <button
+                            style={{
+                              padding: '0.45rem 1rem',
+                              background: '#fff',
+                              color: '#F44336',
+                              border: '1.5px solid #F44336',
+                              borderRadius: '6px',
+                              fontSize: '0.85rem',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              minHeight: 'auto',
+                            }}
+                            onClick={() => handleRejectCompletion(log.log_id)}
+                          >
+                            却下する
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* 提案の承認待ち */}
+                {proposals.length > 0 && (
+                  <>
+                    <div style={{ ...styles.dashSectionTitle, marginTop: pendingCompletionLogs.length > 0 ? '1rem' : 0 }}>
+                      💡 提案の承認待ち（{proposals.length}件）
+                    </div>
+                    {proposals.map(task => (
+                      <ProposalCard
+                        key={task.task_id}
+                        task={task}
+                        proposerName={
+                          children.find(c => c.user_id === task.created_by)?.name || task.created_by
+                        }
+                        onApprove={handleApprove}
+                        onReject={handleReject}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </>
