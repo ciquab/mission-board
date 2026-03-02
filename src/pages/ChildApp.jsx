@@ -767,15 +767,6 @@ export default function ChildApp() {
           <>
             {loading ? (
               <div style={styles.loading}>よみこみちゅう…</div>
-            ) : allDone ? (
-              <div style={styles.allDone}>
-                <span style={styles.allDoneEmoji}>🎉</span>
-                <div style={styles.allDoneTitle}>ぜんぶクリア！</div>
-                <div style={styles.allDoneMsg}>
-                  この時間のミッションをぜんぶやったよ！<br />
-                  すごい！よくがんばった！
-                </div>
-              </div>
             ) : currentMissions.length === 0 ? (
               <div style={styles.empty}>
                 この時間のミッションはないよ。<br />
@@ -783,6 +774,16 @@ export default function ChildApp() {
               </div>
             ) : (
               <>
+                {allDone && (
+                  <div style={styles.allDone}>
+                    <span style={styles.allDoneEmoji}>🎉</span>
+                    <div style={styles.allDoneTitle}>ぜんぶクリア！</div>
+                    <div style={styles.allDoneMsg}>
+                      この時間のミッションをぜんぶやったよ！<br />
+                      すごい！よくがんばった！
+                    </div>
+                  </div>
+                )}
                 <div style={styles.sectionTitle}>🎯 ミッション</div>
                 <div style={styles.missionList}>
                   {currentMissions.map(task => (
