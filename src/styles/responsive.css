@@ -19,11 +19,6 @@
     grid-template-columns: repeat(3, 1fr) !important;
   }
 
-  /* ダッシュボードサマリー: 3列 → 2列 */
-  .summary-row {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-
   /* タスクフォームの2列レイアウト: 1列にスタック */
   .task-form-row {
     grid-template-columns: 1fr !important;

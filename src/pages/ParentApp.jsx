@@ -11,6 +11,7 @@ import {
   addParentToChild,
   getUserPoints,
   getTaskLogsWithDetails,
+  getTodayCompletedTaskIds,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import TaskForm from '../components/parent/TaskForm'
@@ -19,6 +20,19 @@ import ProposalCard from '../components/parent/ProposalCard'
 import ChildProgressCard from '../components/parent/ChildProgressCard'
 import RewardManager from '../components/parent/RewardManager'
 import NotificationScheduleModal from '../components/NotificationScheduleModal'
+
+// 今日このタスクを表示すべきかを recurrence 文字列で判定
+function isTaskScheduledToday(recurrence) {
+  if (!recurrence || recurrence === 'daily' || recurrence === 'weekly') return true
+  if (recurrence.startsWith('weekly:')) {
+    const days = recurrence.split(':')[1].split(',').map(Number)
+    return days.includes(new Date().getDay())
+  }
+  if (recurrence.startsWith('monthly:')) {
+    return new Date().getDate() === Number(recurrence.split(':')[1])
+  }
+  return true
+}
 
 const TAB_DASHBOARD = 'dashboard'
 const TAB_TASKS = 'tasks'
@@ -69,6 +83,7 @@ const styles = {
     background: 'rgba(255,255,255,0.25)',
     padding: '0.15rem 0.5rem',
     borderRadius: '999px',
+    whiteSpace: 'nowrap',
   },
   headerRight: {
     display: 'flex',
@@ -177,7 +192,7 @@ const styles = {
   // ダッシュボード用スタイル
   summaryRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: '0.75rem',
     marginBottom: '1.25rem',
   },
@@ -390,6 +405,8 @@ export default function ParentApp() {
   const [linkStatus, setLinkStatus] = useState('') // 'success' | 'error' | ''
   const [linkMessage, setLinkMessage] = useState('')
   const [linking, setLinking] = useState(false)
+  // ダッシュボード：今日の完了タスクID（ユーザーごと）
+  const [todayCompleted, setTodayCompleted] = useState({})
   // タスク管理タブ 絞り込み・ソート
   const [taskSearch, setTaskSearch] = useState('')
   const [taskFilterChild, setTaskFilterChild] = useState('')
@@ -409,14 +426,16 @@ export default function ParentApp() {
     setLoading(true)
     setError('')
     try {
-      const [allTasks, childList, rewardReqs] = await Promise.all([
+      const [allTasks, childList, rewardReqs, todayDone] = await Promise.all([
         getTasks(),
         getChildren(user.id),
         getRewardRequests(user.id),
+        getTodayCompletedTaskIds(),
       ])
       setTasks(allTasks.filter(t => t.status === 'active'))
       setChildren(childList)
       setRewardRequests(rewardReqs)
+      setTodayCompleted(todayDone)
       // 各子どものポイントをまとめて取得
       if (childList.length > 0) {
         const pointsArr = await Promise.all(childList.map(c => getUserPoints(c.user_id)))
@@ -445,11 +464,20 @@ export default function ParentApp() {
     return child?.name || task.assigned_to || '未割り当て'
   }
 
-  // 子どもごとの統計を取得
-  function getChildStats(childId) {
-    const taskCount = activeTasks.filter(t => t.assigned_to === childId).length
-    const proposalCount = proposals.filter(t => t.created_by === childId).length
-    return { taskCount, proposalCount }
+  // 子どもごとの「今日のタスク」を取得（完了・未完了を分類）
+  function getChildTodayTasks(childId) {
+    const timeBlockOrder = { morning: 0, afternoon: 1, evening: 2, night: 3, bedtime: 4 }
+    const childTasks = activeTasks.filter(t =>
+      t.assigned_to === childId && isTaskScheduledToday(t.recurrence)
+    )
+    const completedSet = new Set(todayCompleted[childId] || [])
+    return childTasks
+      .map(t => ({ ...t, completedToday: completedSet.has(t.task_id) }))
+      .sort((a, b) => {
+        // 未完了を先に、同じステータスなら時間帯順
+        if (a.completedToday !== b.completedToday) return a.completedToday ? 1 : -1
+        return (timeBlockOrder[a.time_block] ?? 99) - (timeBlockOrder[b.time_block] ?? 99)
+      })
   }
 
   // タスク管理タブ：絞り込み・ソートを適用
@@ -689,22 +717,28 @@ export default function ParentApp() {
             ) : (
               <>
                 {/* サマリー統計 */}
-                <div style={styles.summaryRow} className="summary-row">
-                  <div style={styles.summaryCard('#2E75B6')}>
-                    <div style={styles.summaryNum('#2E75B6')}>{children.length}</div>
-                    <div style={styles.summaryLabel}>こども</div>
-                  </div>
-                  <div style={styles.summaryCard('#4CAF50')}>
-                    <div style={styles.summaryNum('#4CAF50')}>{activeTasks.length}</div>
-                    <div style={styles.summaryLabel}>アクティブタスク</div>
-                  </div>
-                  <div style={styles.summaryCard(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
-                    <div style={styles.summaryNum(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
-                      {proposals.length}
+                {(() => {
+                  const allToday = children.flatMap(c => getChildTodayTasks(c.user_id))
+                  const todayDoneCount = allToday.filter(t => t.completedToday).length
+                  const todayTotalCount = allToday.length
+                  const progressColor = todayTotalCount > 0 && todayDoneCount === todayTotalCount ? '#4CAF50' : '#2E75B6'
+                  return (
+                    <div style={styles.summaryRow} className="summary-row">
+                      <div style={styles.summaryCard(progressColor)}>
+                        <div style={styles.summaryNum(progressColor)}>
+                          {todayDoneCount} / {todayTotalCount}
+                        </div>
+                        <div style={styles.summaryLabel}>今日の進捗</div>
+                      </div>
+                      <div style={styles.summaryCard(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
+                        <div style={styles.summaryNum(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
+                          {proposals.length}
+                        </div>
+                        <div style={styles.summaryLabel}>承認待ち</div>
+                      </div>
                     </div>
-                    <div style={styles.summaryLabel}>承認待ち</div>
-                  </div>
-                </div>
+                  )
+                })()}
 
                 {/* 子どもの一覧 */}
                 <div style={styles.dashSection}>
@@ -726,12 +760,13 @@ export default function ParentApp() {
                   ) : (
                     <div style={styles.childList}>
                       {children.map(child => {
-                        const { taskCount, proposalCount } = getChildStats(child.user_id)
+                        const todayTasks = getChildTodayTasks(child.user_id)
+                        const proposalCount = proposals.filter(t => t.created_by === child.user_id).length
                         return (
                           <ChildProgressCard
                             key={child.user_id}
                             child={child}
-                            taskCount={taskCount}
+                            todayTasks={todayTasks}
                             proposalCount={proposalCount}
                             points={childPoints[child.user_id]}
                           />
