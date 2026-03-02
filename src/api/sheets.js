@@ -358,6 +358,23 @@ export async function getTaskLogsWithDetails(userId) {
     .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
 }
 
+/** 今日の完了タスクIDをユーザーごとにまとめて取得（親ダッシュボード用） */
+export async function getTodayCompletedTaskIds() {
+  const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
+  const today = new Date().toDateString()
+  const result = {} // { userId: [taskId, ...] }
+  for (const r of rows) {
+    const taskId = r[1]
+    const userId = r[2]
+    const completedAt = r[3]
+    if (completedAt && new Date(completedAt).toDateString() === today) {
+      if (!result[userId]) result[userId] = []
+      result[userId].push(taskId)
+    }
+  }
+  return result
+}
+
 /** 連続達成日数（ストリーク）を計算 */
 export async function getStreak(userId) {
   const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
