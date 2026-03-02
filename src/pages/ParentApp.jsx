@@ -721,6 +721,8 @@ export default function ParentApp() {
                   const allToday = children.flatMap(c => getChildTodayTasks(c.user_id))
                   const todayDoneCount = allToday.filter(t => t.completedToday).length
                   const todayTotalCount = allToday.length
+                  const todayEarnedPts = allToday.filter(t => t.completedToday).reduce((s, t) => s + Number(t.point_value || 0), 0)
+                  const todayTotalPts = allToday.reduce((s, t) => s + Number(t.point_value || 0), 0)
                   const progressColor = todayTotalCount > 0 && todayDoneCount === todayTotalCount ? '#4CAF50' : '#2E75B6'
                   return (
                     <div style={styles.summaryRow} className="summary-row">
@@ -728,7 +730,9 @@ export default function ParentApp() {
                         <div style={styles.summaryNum(progressColor)}>
                           {todayDoneCount} / {todayTotalCount}
                         </div>
-                        <div style={styles.summaryLabel}>今日の進捗</div>
+                        <div style={styles.summaryLabel}>
+                          今日の進捗{todayTotalPts > 0 && ` (${todayEarnedPts}/${todayTotalPts}pt)`}
+                        </div>
                       </div>
                       <div style={styles.summaryCard(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>
                         <div style={styles.summaryNum(proposals.length > 0 ? '#F44336' : '#9E9E9E')}>

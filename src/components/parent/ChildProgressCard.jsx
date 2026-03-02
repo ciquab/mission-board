@@ -116,6 +116,13 @@ const styles = {
     color: '#aaa',
     flexShrink: 0,
   },
+  taskPoints: (completed) => ({
+    fontSize: '0.7rem',
+    color: completed ? '#ccc' : '#E65100',
+    fontWeight: 'bold',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  }),
   noTaskMsg: {
     fontSize: '0.82rem',
     color: '#bbb',
@@ -140,6 +147,8 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
   const totalCount = todayTasks.length
   const doneCount = todayTasks.filter(t => t.completedToday).length
   const progressPct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0
+  const totalPts = todayTasks.reduce((s, t) => s + Number(t.point_value || 0), 0)
+  const earnedPts = todayTasks.filter(t => t.completedToday).reduce((s, t) => s + Number(t.point_value || 0), 0)
 
   return (
     <div style={styles.card}>
@@ -155,7 +164,7 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
           </div>
           {totalCount > 0 ? (
             <div style={styles.progressRow}>
-              <span style={styles.progressLabel}>今日 {doneCount}/{totalCount}</span>
+              <span style={styles.progressLabel}>今日 {doneCount}/{totalCount}{totalPts > 0 && ` (${earnedPts}/${totalPts}pt)`}</span>
               <div style={styles.progressBg}>
                 <div style={styles.progressFill(progressPct)} />
               </div>
@@ -183,6 +192,11 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
               {task.time_block && (
                 <span style={styles.taskTimeBlock}>
                   {TIME_BLOCK_LABELS[task.time_block] || task.time_block}
+                </span>
+              )}
+              {Number(task.point_value) > 0 && (
+                <span style={styles.taskPoints(task.completedToday)}>
+                  {task.point_value}pt
                 </span>
               )}
             </div>
