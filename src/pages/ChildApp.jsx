@@ -10,6 +10,7 @@ import {
   getBadges,
   checkAndAwardBadges,
   getRewards,
+  getUserPendingApprovalTaskIds,
 } from '../api/sheets'
 import { useNotifications } from '../hooks/useNotifications'
 import MissionCard from '../components/child/MissionCard'
@@ -453,6 +454,14 @@ export default function ChildApp() {
     } catch { return [] }
   })
 
+  // 承認待ちのタスクID（require_approval が true で未承認）
+  const [pendingApprovalIds, setPendingApprovalIds] = useState(() => {
+    const key = `pendingApproval_${getToday()}_${user.id}`
+    try {
+      return JSON.parse(localStorage.getItem(key) || '[]')
+    } catch { return [] }
+  })
+
   // 本日の提案数（ローカルキャッシュ）
   const [todayProposals, setTodayProposals] = useState(() => {
     const key = `proposals_${getToday()}_${user.id}`
@@ -498,18 +507,22 @@ export default function ChildApp() {
     setLoading(true)
     setError('')
     try {
-      const [myTasks, myPoints, myStreak, myBadges, myRewards] = await Promise.all([
+      const [myTasks, myPoints, myStreak, myBadges, myRewards, myPendingApprovals] = await Promise.all([
         getTasksForUser(user.id),
         getUserPoints(user.id),
         getStreak(user.id),
         getBadges(user.id),
         getRewards(user.id),
+        getUserPendingApprovalTaskIds(user.id),
       ])
       setTasks(myTasks)
       setPoints(myPoints)
       setStreak(myStreak)
       setBadges(myBadges)
       setRewards(myRewards)
+      // サーバーの承認待ち状態をローカルに反映
+      setPendingApprovalIds(myPendingApprovals)
+      localStorage.setItem(`pendingApproval_${getToday()}_${user.id}`, JSON.stringify(myPendingApprovals))
     } catch (e) {
       setError('データのよみこみに失敗しました。' + e.message)
     } finally {
@@ -544,23 +557,36 @@ export default function ChildApp() {
     setCompleting(taskId)
     setError('')
     try {
-      const earned = Number(pointValue || 0)
+      // タスクの require_approval を確認
+      const task = tasks.find(t => t.task_id === taskId)
+      const needsApproval = task && task.require_approval === 'true'
+
+      // 承認必要な場合はポイント0で記録し、親の承認後にポイント付与
+      const earned = needsApproval ? 0 : Number(pointValue || 0)
       await logTaskCompletion(taskId, user.id, earned)
+
       const newCompleted = [...completedIds, taskId]
       setCompletedIds(newCompleted)
       localStorage.setItem(`completed_${getToday()}`, JSON.stringify(newCompleted))
-      const newPoints = points + earned
-      setPoints(newPoints)
 
-      // タスク完了後にバッジチェック
-      const todayAllDone = allTasks.every(t => newCompleted.includes(t.task_id))
-      const awarded = await checkAndAwardBadges(user.id, newPoints, streak, todayAllDone)
-      if (awarded.length > 0) {
-        setNewBadges(awarded)
-        setBadgeModalIdx(0)
-        // バッジリストを更新
-        const updatedBadges = await getBadges(user.id)
-        setBadges(updatedBadges)
+      if (needsApproval) {
+        // 承認待ちリストに追加
+        const newPending = [...pendingApprovalIds, taskId]
+        setPendingApprovalIds(newPending)
+        localStorage.setItem(`pendingApproval_${getToday()}_${user.id}`, JSON.stringify(newPending))
+      } else {
+        const newPoints = points + earned
+        setPoints(newPoints)
+
+        // タスク完了後にバッジチェック（承認不要のタスクのみ即時チェック）
+        const todayAllDone = allTasks.every(t => newCompleted.includes(t.task_id))
+        const awarded = await checkAndAwardBadges(user.id, newPoints, streak, todayAllDone)
+        if (awarded.length > 0) {
+          setNewBadges(awarded)
+          setBadgeModalIdx(0)
+          const updatedBadges = await getBadges(user.id)
+          setBadges(updatedBadges)
+        }
       }
     } catch (e) {
       setError('かんりょうの記録に失敗しました。' + e.message)
@@ -764,6 +790,7 @@ export default function ChildApp() {
                       key={task.task_id}
                       task={task}
                       completed={completedIds.includes(task.task_id)}
+                      pendingApproval={pendingApprovalIds.includes(task.task_id)}
                       onComplete={handleComplete}
                       completing={completing === task.task_id}
                     />

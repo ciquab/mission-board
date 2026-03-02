@@ -142,13 +142,16 @@ const styles = {
   },
 }
 
-export default function ChildProgressCard({ child, todayTasks, proposalCount, points }) {
+export default function ChildProgressCard({ child, todayTasks, proposalCount, pendingApprovalCount, points }) {
   const initial = child.name ? child.name[0].toUpperCase() : '?'
   const totalCount = todayTasks.length
-  const doneCount = todayTasks.filter(t => t.completedToday).length
+  // 承認待ちは完了にカウントしない
+  const doneCount = todayTasks.filter(t => t.completedToday && !t.pendingApproval).length
+  const pendingCount = pendingApprovalCount || todayTasks.filter(t => t.pendingApproval).length
   const progressPct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0
   const totalPts = todayTasks.reduce((s, t) => s + Number(t.point_value || 0), 0)
-  const earnedPts = todayTasks.filter(t => t.completedToday).reduce((s, t) => s + Number(t.point_value || 0), 0)
+  // 承認待ちのタスクはポイントに含めない
+  const earnedPts = todayTasks.filter(t => t.completedToday && !t.pendingApproval).reduce((s, t) => s + Number(t.point_value || 0), 0)
 
   return (
     <div style={styles.card}>
@@ -175,18 +178,18 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
         </div>
       </div>
 
-      {/* 今日のタスク一覧（未完了 → 完了） */}
+      {/* 今日のタスク一覧（未完了 → 承認待ち → 完了） */}
       {totalCount > 0 && (
         <div style={styles.taskList}>
           {todayTasks.map(task => (
-            <div key={task.task_id} style={styles.taskItem(task.completedToday)}>
+            <div key={task.task_id} style={styles.taskItem(task.completedToday && !task.pendingApproval)}>
               <span style={styles.taskCheck(task.completedToday)}>
-                {task.completedToday ? '✅' : '⬜'}
+                {task.pendingApproval ? '⏳' : task.completedToday ? '✅' : '⬜'}
               </span>
               <span style={styles.taskCheck(task.completedToday)}>
                 {task.icon || '📋'}
               </span>
-              <span style={styles.taskTitle(task.completedToday)}>
+              <span style={styles.taskTitle(task.completedToday && !task.pendingApproval)}>
                 {task.title}
               </span>
               {task.time_block && (
@@ -195,8 +198,8 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
                 </span>
               )}
               {Number(task.point_value) > 0 && (
-                <span style={styles.taskPoints(task.completedToday)}>
-                  {task.point_value}pt
+                <span style={styles.taskPoints(task.completedToday && !task.pendingApproval)}>
+                  {task.pendingApproval ? '承認待ち' : `${task.point_value}pt`}
                 </span>
               )}
             </div>
@@ -204,10 +207,17 @@ export default function ChildProgressCard({ child, todayTasks, proposalCount, po
         </div>
       )}
 
+      {/* 完了承認待ち */}
+      {pendingCount > 0 && (
+        <div style={{ ...styles.pendingBadge, background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+          ⏳ 完了承認待ち {pendingCount}件
+        </div>
+      )}
+
       {/* 承認待ち提案 */}
       {proposalCount > 0 && (
         <div style={styles.pendingBadge}>
-          💡 承認待ち {proposalCount}件
+          💡 提案承認待ち {proposalCount}件
         </div>
       )}
     </div>
