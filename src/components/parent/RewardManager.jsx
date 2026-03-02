@@ -230,7 +230,8 @@ const styles = {
   },
 }
 
-const POINT_OPTIONS = [5, 10, 20, 30, 50, 100]
+const MIN_REWARD_POINTS = 1
+const MAX_REWARD_POINTS = 1000
 
 /**
  * 親用ご褒美管理コンポーネント
@@ -249,7 +250,7 @@ export default function RewardManager({ parentId, children }) {
   // フォームの状態
   const [form, setForm] = useState({
     title: '',
-    point_cost: '10',
+    point_cost: '100',
     assigned_to: children[0]?.user_id || '',
   })
 
@@ -272,7 +273,7 @@ export default function RewardManager({ parentId, children }) {
     setEditingReward(null)
     setForm({
       title: '',
-      point_cost: '10',
+      point_cost: '100',
       assigned_to: children[0]?.user_id || '',
     })
     setShowForm(true)
@@ -291,13 +292,18 @@ export default function RewardManager({ parentId, children }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
+    const pointCost = Number(form.point_cost)
+    if (!Number.isInteger(pointCost) || pointCost < MIN_REWARD_POINTS || pointCost > MAX_REWARD_POINTS) {
+      setError(`必要ポイントは${MIN_REWARD_POINTS}〜${MAX_REWARD_POINTS}の整数で入力してください。`)
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
       if (editingReward) {
-        await updateReward(editingReward.reward_id, form.title.trim(), Number(form.point_cost))
+        await updateReward(editingReward.reward_id, form.title.trim(), pointCost)
       } else {
-        await createReward(form.title.trim(), Number(form.point_cost), parentId, form.assigned_to)
+        await createReward(form.title.trim(), pointCost, parentId, form.assigned_to)
       }
       setShowForm(false)
       setEditingReward(null)
@@ -493,16 +499,18 @@ export default function RewardManager({ parentId, children }) {
 
               <div style={styles.formRow}>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.label}>必要ポイント</label>
-                  <select
-                    style={styles.select}
+                  <label style={styles.label}>必要ポイント（{MIN_REWARD_POINTS}〜{MAX_REWARD_POINTS}）</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={MIN_REWARD_POINTS}
+                    max={MAX_REWARD_POINTS}
+                    step="1"
+                    style={styles.input}
                     value={form.point_cost}
                     onChange={e => setForm(f => ({ ...f, point_cost: e.target.value }))}
-                  >
-                    {POINT_OPTIONS.map(p => (
-                      <option key={p} value={p}>⭐ {p} pt</option>
-                    ))}
-                  </select>
+                    required
+                  />
                 </div>
 
                 <div style={{ ...styles.formGroup, flex: 1 }}>
