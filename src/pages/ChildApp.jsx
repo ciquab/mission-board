@@ -433,6 +433,11 @@ const styles = {
     color: '#777',
     lineHeight: 1.5,
   },
+  badgeDetailMeta: {
+    marginTop: '0.45rem',
+    color: '#888',
+    fontSize: '0.85rem',
+  },
 }
 
 export default function ChildApp() {
@@ -454,6 +459,9 @@ export default function ChildApp() {
   // 新バッジ取得モーダル
   const [newBadges, setNewBadges] = useState([])  // 取得した badge_type 配列
   const [badgeModalIdx, setBadgeModalIdx] = useState(0)
+  const [selectedBadgeType, setSelectedBadgeType] = useState(null)
+  const [selectedBadgeEarned, setSelectedBadgeEarned] = useState(false)
+  const [selectedBadgeEarnedDate, setSelectedBadgeEarnedDate] = useState('')
   const [showNotifInfo, setShowNotifInfo] = useState(false)
 
   // ローカルで完了済みを管理（当日のみ）
@@ -513,6 +521,8 @@ export default function ChildApp() {
   const allDone = currentMissions.length > 0 &&
     currentMissions.every(m => completedIds.includes(m.task_id))
 
+  const knownBadgesRef = useRef(null)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -529,6 +539,29 @@ export default function ChildApp() {
       setPoints(myPoints)
       setStreak(myStreak)
       setBadges(myBadges)
+
+      const currentBadgeTypes = myBadges.map(b => b.badge_type)
+      const storageKey = `known_badges_${user.id}`
+      if (knownBadgesRef.current === null) {
+        try {
+          knownBadgesRef.current = new Set(JSON.parse(localStorage.getItem(storageKey) || '[]'))
+        } catch {
+          knownBadgesRef.current = new Set()
+        }
+      }
+      if (knownBadgesRef.current.size === 0) {
+        knownBadgesRef.current = new Set(currentBadgeTypes)
+        localStorage.setItem(storageKey, JSON.stringify(currentBadgeTypes))
+      } else {
+        const unseen = currentBadgeTypes.filter(type => !knownBadgesRef.current.has(type))
+        if (unseen.length > 0) {
+          setNewBadges(unseen)
+          setBadgeModalIdx(0)
+          unseen.forEach(type => knownBadgesRef.current.add(type))
+          localStorage.setItem(storageKey, JSON.stringify([...knownBadgesRef.current]))
+        }
+      }
+
       setRewards(myRewards)
       // サーバーの承認待ち状態をローカルに反映
       setPendingApprovalIds(myPendingApprovals)
@@ -594,6 +627,10 @@ export default function ChildApp() {
         if (awarded.length > 0) {
           setNewBadges(awarded)
           setBadgeModalIdx(0)
+          const storageKey = `known_badges_${user.id}`
+          if (knownBadgesRef.current === null) knownBadgesRef.current = new Set()
+          awarded.forEach(type => knownBadgesRef.current.add(type))
+          localStorage.setItem(storageKey, JSON.stringify([...knownBadgesRef.current]))
           const updatedBadges = await getBadges(user.id)
           setBadges(updatedBadges)
         }
@@ -656,6 +693,18 @@ export default function ChildApp() {
     localStorage.setItem(`dismissed_rejected_${user.id}`, JSON.stringify([...next]))
   }
 
+  function openBadgeDetail(type, earned, earnedDate) {
+    setSelectedBadgeType(type)
+    setSelectedBadgeEarned(earned)
+    setSelectedBadgeEarnedDate(earnedDate || '')
+  }
+
+  function closeBadgeDetail() {
+    setSelectedBadgeType(null)
+    setSelectedBadgeEarned(false)
+    setSelectedBadgeEarnedDate('')
+  }
+
   // バッジモーダルを閉じる（複数バッジの場合は次へ進む）
   function closeBadgeModal() {
     if (badgeModalIdx < newBadges.length - 1) {
@@ -669,6 +718,7 @@ export default function ChildApp() {
   // 現在表示中のバッジ
   const currentNewBadge = newBadges[badgeModalIdx]
   const currentBadgeDef = currentNewBadge ? getBadgeDef(currentNewBadge) : null
+  const selectedBadgeDef = selectedBadgeType ? getBadgeDef(selectedBadgeType) : null
 
   return (
     <div style={styles.container}>
@@ -871,7 +921,7 @@ export default function ChildApp() {
               <div style={styles.loading}>よみこみちゅう…</div>
             ) : (
               <>
-                <BadgePanel badges={badges} />
+                <BadgePanel badges={badges} onBadgeTap={openBadgeDetail} />
                 <RewardShop
                   rewards={rewards}
                   points={points}
@@ -937,6 +987,40 @@ export default function ChildApp() {
               onClick={closeBadgeModal}
             >
               {badgeModalIdx < newBadges.length - 1 ? 'つぎへ →' : 'やったー！'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* バッジ詳細モーダル */}
+      {selectedBadgeDef && (
+        <div style={styles.badgeModalOverlay} onClick={closeBadgeDetail}>
+          <div style={styles.badgeModal} onClick={e => e.stopPropagation()}>
+            <span style={styles.badgeModalEmoji}>{selectedBadgeDef.icon}</span>
+            <div style={styles.badgeModalTitle}>🏅 バッジしょうさい</div>
+            <div style={styles.badgeModalLabel}>{selectedBadgeDef.label}</div>
+            <div style={styles.badgeModalDesc}>{selectedBadgeDef.desc}</div>
+            <div style={styles.badgeDetailMeta}>
+              {selectedBadgeEarned
+                ? `獲得日: ${selectedBadgeEarnedDate || 'きょう'}`
+                : 'まだ みかくとく'}
+            </div>
+            <button
+              style={{
+                marginTop: '1.25rem',
+                padding: '0.7rem 2rem',
+                background: '#1976D2',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '999px',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                minHeight: 'auto',
+              }}
+              onClick={closeBadgeDetail}
+            >
+              とじる
             </button>
           </div>
         </div>

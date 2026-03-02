@@ -19,12 +19,14 @@ const styles = {
     gap: '0.65rem',
   },
   badgeItem: (earned) => ({
+    cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '0.3rem',
     padding: '0.75rem 0.4rem',
     background: earned ? '#fff' : '#f0f0f0',
+    border: 'none',
     borderRadius: '12px',
     boxShadow: earned ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
     opacity: earned ? 1 : 0.45,
@@ -59,7 +61,7 @@ const styles = {
  * 子ども用バッジ一覧パネル
  * @param {Object[]} badges - getBadges() で取得したバッジ配列
  */
-export default function BadgePanel({ badges }) {
+export default function BadgePanel({ badges, onBadgeTap }) {
   // 全バッジ種類に対して、取得済みかどうかをマップ
   const earnedMap = {}
   badges.forEach(b => { earnedMap[b.badge_type] = b })
@@ -85,13 +87,19 @@ export default function BadgePanel({ badges }) {
             : null
 
           return (
-            <div key={type} style={styles.badgeItem(!!earned)} title={def.desc}>
+            <button
+              key={type}
+              type="button"
+              style={styles.badgeItem(!!earned)}
+              title={def.desc}
+              onClick={() => onBadgeTap && onBadgeTap(type, !!earned, earnedDate)}
+            >
               <span style={styles.badgeIcon(!!earned)}>{def.icon}</span>
               <span style={styles.badgeLabel}>{def.label}</span>
               {earnedDate && (
                 <span style={styles.earnedAt}>{earnedDate}</span>
               )}
-            </div>
+            </button>
           )
         })}
       </div>
