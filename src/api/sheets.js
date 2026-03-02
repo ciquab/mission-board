@@ -164,7 +164,7 @@ export async function getPendingProposals(parentId) {
   ])
   // parentId に紐づく子どものIDリストを取得してフィルタリング
   const childIds = userRows
-    .filter(r => r[4] === parentId)
+    .filter(r => (r[4] || '').split(',').map(id => id.trim()).includes(parentId))
     .map(r => r[0])
   return tasks.filter(t =>
     t.approval_status === 'pending' && childIds.includes(t.created_by)
@@ -498,13 +498,14 @@ export async function getStreak(userId) {
     .filter(r => r[2] === userId && r[3])
     .map(r => new Date(r[3]).toDateString())
 
-  const uniqueDates = [...new Set(logs)].sort().reverse()
+  const uniqueDates = [...new Set(logs)]
+    .map(dateStr => new Date(dateStr))
+    .sort((a, b) => b - a)
   let streak = 0
   let current = new Date()
   current.setHours(0, 0, 0, 0)
 
-  for (const dateStr of uniqueDates) {
-    const date = new Date(dateStr)
+  for (const date of uniqueDates) {
     const diff = (current - date) / (1000 * 60 * 60 * 24)
     if (diff <= 1) {
       streak++
