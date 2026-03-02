@@ -1,3 +1,13 @@
+function isTrueLike(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase()
+    return v === 'true' || v === '1' || v === 'yes'
+  }
+  return false
+}
+
 const TIME_BLOCK_LABELS = {
   morning: '🌅 朝',
   afternoon: '☀️ 昼',
@@ -122,7 +132,7 @@ export default function TaskCard({ task, assigneeName, onEdit, onDelete }) {
             <span style={styles.badge('#4CAF50')}>{formatRecurrence(task.recurrence)}</span>
           )}
           <span style={styles.badge('#FFB300')}>{task.point_value}pt</span>
-          {task.require_approval === 'true' && (
+          {isTrueLike(task.require_approval) && (
             <span style={styles.badge('#9C27B0')}>承認必要</span>
           )}
         </div>

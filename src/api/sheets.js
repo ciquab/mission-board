@@ -17,6 +17,17 @@ export const SHEETS = {
   BADGES: 'badges',
 }
 
+
+function isTrueLike(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase()
+    return v === 'true' || v === '1' || v === 'yes'
+  }
+  return false
+}
+
 // アクセストークン（OAuth後に設定される）
 let accessToken = null
 export function setAccessToken(token) {
@@ -373,7 +384,7 @@ export async function getTodayCompletedTaskIds() {
   // task_id → require_approval のマップ
   const requireApprovalMap = {}
   for (const r of taskRows) {
-    requireApprovalMap[r[0]] = r[12] === 'true'
+    requireApprovalMap[r[0]] = isTrueLike(r[12])
   }
 
   const completed = {} // { userId: [taskId, ...] }
@@ -427,7 +438,7 @@ export async function getPendingCompletionLogs(childIds) {
       const approvedBy = r[4]
       const task = taskMap[taskId]
       return task &&
-        task.require_approval === 'true' &&
+        isTrueLike(task.require_approval) &&
         !approvedBy &&
         childIds.includes(userId)
     })
@@ -476,7 +487,7 @@ export async function getUserPendingApprovalTaskIds(userId) {
 
   const requireApprovalMap = {}
   for (const r of taskRows) {
-    requireApprovalMap[r[0]] = r[12] === 'true'
+    requireApprovalMap[r[0]] = isTrueLike(r[12])
   }
 
   return logRows
