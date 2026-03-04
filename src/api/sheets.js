@@ -320,6 +320,18 @@ export async function updateUserFcmToken(userId, fcmToken) {
 
 /** タスク完了を記録 */
 export async function logTaskCompletion(taskId, userId, pointsEarned) {
+  // 同じユーザーが同じタスクを同日に重複登録しないようにする
+  const rows = await getRows(SHEETS.TASK_LOGS, 'A2:G')
+  const today = new Date().toDateString()
+  const alreadyLogged = rows.some(r =>
+    r[1] === taskId &&
+    r[2] === userId &&
+    r[4] !== 'rejected' &&
+    r[3] &&
+    new Date(r[3]).toDateString() === today
+  )
+  if (alreadyLogged) return
+
   const log = [
     `log_${Date.now()}`,
     taskId,
@@ -387,8 +399,8 @@ export async function getTodayCompletedTaskIds() {
     requireApprovalMap[r[0]] = isTrueLike(r[12])
   }
 
-  const completed = {} // { userId: [taskId, ...] }
-  const pendingApproval = {} // { userId: [taskId, ...] }
+  const completedMap = {} // { userId: Set<taskId> }
+  const pendingApprovalMap = {} // { userId: Set<taskId> }
   for (const r of logRows) {
     const taskId = r[1]
     const userId = r[2]
@@ -397,15 +409,22 @@ export async function getTodayCompletedTaskIds() {
     if (completedAt && new Date(completedAt).toDateString() === today) {
       // 却下済みはスキップ
       if (approvedBy === 'rejected') continue
-      if (!completed[userId]) completed[userId] = []
-      completed[userId].push(taskId)
+      if (!completedMap[userId]) completedMap[userId] = new Set()
+      completedMap[userId].add(taskId)
       // 承認必要で未承認のタスク
       if (requireApprovalMap[taskId] && !approvedBy) {
-        if (!pendingApproval[userId]) pendingApproval[userId] = []
-        pendingApproval[userId].push(taskId)
+        if (!pendingApprovalMap[userId]) pendingApprovalMap[userId] = new Set()
+        pendingApprovalMap[userId].add(taskId)
       }
     }
   }
+
+  const completed = Object.fromEntries(
+    Object.entries(completedMap).map(([userId, set]) => [userId, [...set]])
+  )
+  const pendingApproval = Object.fromEntries(
+    Object.entries(pendingApprovalMap).map(([userId, set]) => [userId, [...set]])
+  )
   return { completed, pendingApproval }
 }
 
@@ -431,7 +450,24 @@ export async function getPendingCompletionLogs(childIds) {
     userMap[r[0]] = rowToUser(r)
   }
 
-  return logRows
+  const dedupedLatestLogs = new Map()
+  for (const r of logRows) {
+    const taskId = r[1]
+    const userId = r[2]
+    const completedAt = r[3]
+    const approvedBy = r[4]
+    const task = taskMap[taskId]
+    if (!task || !isTrueLike(task.require_approval) || approvedBy || !childIds.includes(userId)) continue
+
+    const dayKey = completedAt ? new Date(completedAt).toDateString() : 'unknown-day'
+    const key = `${userId}:${taskId}:${dayKey}`
+    const prev = dedupedLatestLogs.get(key)
+    if (!prev || new Date(completedAt) > new Date(prev[3])) {
+      dedupedLatestLogs.set(key, r)
+    }
+  }
+
+  return [...dedupedLatestLogs.values()]
     .filter(r => {
       const taskId = r[1]
       const userId = r[2]
