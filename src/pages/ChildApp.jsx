@@ -535,12 +535,17 @@ export default function ChildApp() {
         getRewards(user.id),
         getUserPendingApprovalTaskIds(user.id),
       ])
+
+      // 親承認でポイントが増えたケースなど、前回未判定のバッジを補完する
+      const awardedOnLoad = await checkAndAwardBadges(user.id, myPoints, myStreak, false)
+      const latestBadges = awardedOnLoad.length > 0 ? await getBadges(user.id) : myBadges
+
       setTasks(myTasks)
       setPoints(myPoints)
       setStreak(myStreak)
-      setBadges(myBadges)
+      setBadges(latestBadges)
 
-      const currentBadgeTypes = myBadges.map(b => b.badge_type)
+      const currentBadgeTypes = latestBadges.map(b => b.badge_type)
       const storageKey = `known_badges_${user.id}`
       if (knownBadgesRef.current === null) {
         try {
